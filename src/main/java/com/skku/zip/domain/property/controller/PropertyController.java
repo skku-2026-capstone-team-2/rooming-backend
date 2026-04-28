@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/properties")
+@RequestMapping("/api/v1/properties")
 @CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class PropertyController {

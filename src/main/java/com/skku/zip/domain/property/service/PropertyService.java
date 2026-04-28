@@ -1,5 +1,8 @@
 package com.skku.zip.domain.property.service;
 
+import com.skku.zip.domain.property.dto.AdminCreatePropertyRequest;
+import com.skku.zip.domain.property.dto.AdminProperty3DRequest;
+import com.skku.zip.domain.property.dto.AdminUpdatePropertyRequest;
 import com.skku.zip.domain.property.dto.Property3DResponse;
 import com.skku.zip.domain.property.dto.PropertyDetailResponse;
 import com.skku.zip.domain.property.dto.PropertyImageResponse;
@@ -94,5 +97,19 @@ public class PropertyService {
 
     public List<Property> getAll() {
         return dummyData;
+    }
+
+    public void createProperty(AdminCreatePropertyRequest request) {
+        // TODO: DB 연동 후 구현
+    }
+
+    public void updateProperty(Long propertyId, AdminUpdatePropertyRequest request) {
+        getRawById(propertyId); // 존재 여부 검증
+        // TODO: DB 연동 후 구현
+    }
+
+    public void update3DAsset(Long propertyId, AdminProperty3DRequest request) {
+        getRawById(propertyId); // 존재 여부 검증
+        // TODO: DB 연동 후 구현
     }
 }
