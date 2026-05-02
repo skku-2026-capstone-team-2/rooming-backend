@@ -8,14 +8,18 @@ import com.skku.zip.domain.property.dto.PropertyDetailResponse;
 import com.skku.zip.domain.property.dto.PropertyImageResponse;
 import com.skku.zip.domain.property.entity.Property;
 import org.springframework.stereotype.Service;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @Service
 public class PropertyService {
 
-    private final List<Property> dummyData = List.of(
+    private final AtomicLong idSequence = new AtomicLong(104L);
+
+    private final List<Property> dummyData = new ArrayList<>(List.of(
             Property.builder()
                     .propertyId(101L)
                     .title("성대 정문 도보 5분 원룸")
@@ -47,7 +51,7 @@ public class PropertyService {
                     .splineUrl("https://prod.spline.design/t7nMhC63hlht2v4b/scene.splinecode") // 새로운 모델 URL
                     .imageUrls(List.of("/images/103_room_main.png", "/images/103_room_bath.png"))
                     .build()
-    );
+    ));
 
     public Property getRawById(Long id) {
         return dummyData.stream()
@@ -100,16 +104,41 @@ public class PropertyService {
     }
 
     public void createProperty(AdminCreatePropertyRequest request) {
-        // TODO: DB 연동 후 구현
+        Property property = Property.builder()
+                .propertyId(idSequence.getAndIncrement())
+                .title(request.getTitle())
+                .address(request.getAddress())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .deposit(request.getDeposit())
+                .monthlyRent(request.getMonthlyRent())
+                .areaM2(request.getAreaM2())
+                .roomType(request.getRoomType())
+                .floorInfo(request.getFloorInfo())
+                .maintenanceFee(request.getMaintenanceFee())
+                .description(request.getDescription())
+                .has3DModel(false)
+                .imageUrls(new ArrayList<>())
+                .build();
+        dummyData.add(property);
     }
 
     public void updateProperty(Long propertyId, AdminUpdatePropertyRequest request) {
-        getRawById(propertyId); // 존재 여부 검증
-        // TODO: DB 연동 후 구현
+        Property p = getRawById(propertyId);
+        if (request.getTitle() != null) p.setTitle(request.getTitle());
+        if (request.getAddress() != null) p.setAddress(request.getAddress());
+        if (request.getDeposit() != null) p.setDeposit(request.getDeposit());
+        if (request.getMonthlyRent() != null) p.setMonthlyRent(request.getMonthlyRent());
+        if (request.getAreaM2() != null) p.setAreaM2(request.getAreaM2());
+        if (request.getRoomType() != null) p.setRoomType(request.getRoomType());
+        if (request.getFloorInfo() != null) p.setFloorInfo(request.getFloorInfo());
+        if (request.getMaintenanceFee() != null) p.setMaintenanceFee(request.getMaintenanceFee());
+        if (request.getDescription() != null) p.setDescription(request.getDescription());
     }
 
     public void update3DAsset(Long propertyId, AdminProperty3DRequest request) {
-        getRawById(propertyId); // 존재 여부 검증
-        // TODO: DB 연동 후 구현
+        Property p = getRawById(propertyId);
+        p.setHas3DModel(true);
+        p.setSplineUrl(request.getModelUrl());
     }
 }

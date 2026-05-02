@@ -19,7 +19,9 @@ public class Property {
     private Float areaM2;
     private String roomType;
     private String floorInfo;
+    private Integer maintenanceFee;
+    private String description;
     private Boolean has3DModel;
     private String splineUrl;
-    private List<String> imageUrls; // 매물 사진 여러개?
+    private List<String> imageUrls;
 }
