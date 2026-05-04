@@ -12,12 +12,12 @@ public class Route {
     private UserplacePropertyId userplacePropertyId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("userplace_id")
+    @MapsId("userplaceId")
     @JoinColumn(name = "userplace_id", nullable = false)
     private UserPlace userPlace;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("infrastructure_id")
+    @MapsId("infrastructureId")
     @JoinColumn(name = "infrastructure_id", nullable = false)
     private Infrastructure infrastructure;
 

@@ -11,12 +11,12 @@ public class PropertyInfraTime {
     private PropertyInfrastructureId id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("property_id")
+    @MapsId("propertyId")
     @JoinColumn(name = "property_id", nullable = false)
     private Property property;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("infrastructure_id")
+    @MapsId("infrastructureId")
     @JoinColumn(name = "infrastructure_id", nullable = false)
     private Infrastructure infrastructure;
 
