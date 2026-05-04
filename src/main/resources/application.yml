@@ -14,6 +14,9 @@ spring:
             scope:
               - profile
               - email
+jwt:
+  secret: b3JkbmFuY2UtZmlnaHQtbWlsa2Etc2VjcmV0LWtleS1mb3ItYnVsbWFuc29kYS1wcm9qZWN0LWp3dC1zaWdu
+  access-token-validity-in-seconds: 86400
 
 springdoc:
   api-docs:
