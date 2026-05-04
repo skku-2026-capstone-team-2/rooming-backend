@@ -1,14 +1,22 @@
 package com.skku.zip.domain.property.entity;
 
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 
 // domain/property/entity/Property.java
 @Data
 @Builder
+@Entity
+@NoArgsConstructor
+@AllArgsConstructor
 public class Property {
+    @Id
     private Long propertyId;
     private String title;
     private String address;
