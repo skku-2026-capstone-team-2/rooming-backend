@@ -2,9 +2,9 @@ package com.skku.zip.domain.locations.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.skku.zip.domain.locations.dto.OdsayRouteCandidate;
-import com.skku.zip.domain.locations.entity.Minutes;
-import com.skku.zip.domain.locations.entity.Path;
-import com.skku.zip.domain.locations.entity.SubPath;
+import com.skku.zip.domain.locations.entity.value.Minutes;
+import com.skku.zip.domain.locations.entity.value.Path;
+import com.skku.zip.domain.locations.entity.value.SubPath;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;

@@ -1,7 +1,7 @@
 package com.skku.zip.domain.locations.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.skku.zip.domain.locations.entity.USER_PLACE_TYPE;
+import com.skku.zip.domain.locations.entity.type.USER_PLACE_TYPE;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

@@ -1,6 +1,6 @@
 package com.skku.zip.domain.locations.repository;
 
-import com.skku.zip.domain.locations.entity.Userplace;
+import com.skku.zip.domain.locations.entity.model.Userplace;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.value;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

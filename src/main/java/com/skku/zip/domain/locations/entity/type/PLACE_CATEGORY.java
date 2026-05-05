@@ -1,4 +1,4 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.type;
 
 public enum PLACE_CATEGORY {
     SCHOOL,

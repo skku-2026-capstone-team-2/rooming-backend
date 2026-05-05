@@ -1,5 +1,8 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.model;
 
+import com.skku.zip.domain.locations.entity.type.PLACE_CATEGORY;
+import com.skku.zip.domain.locations.entity.type.USER_PLACE_TYPE;
+import com.skku.zip.domain.locations.entity.value.RoadAddress;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;

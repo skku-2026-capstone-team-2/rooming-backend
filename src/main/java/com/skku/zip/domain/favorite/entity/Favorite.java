@@ -2,13 +2,9 @@ package com.skku.zip.domain.favorite.entity;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.skku.zip.common.exception.BadRequestException;
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import jakarta.persistence.UniqueConstraint;
+import com.skku.zip.domain.user.entity.Seeker;
+import com.skku.zip.domain.user.entity.User;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -40,6 +36,10 @@ public class Favorite {
 
     @Column(name = "road_address")
     private String roadAddress;
+
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private Seeker user;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "snapshot_json", nullable = false, columnDefinition = "jsonb")

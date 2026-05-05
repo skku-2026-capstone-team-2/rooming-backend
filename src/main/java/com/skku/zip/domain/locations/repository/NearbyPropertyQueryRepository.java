@@ -1,6 +1,6 @@
 package com.skku.zip.domain.locations.repository;
 
-import com.skku.zip.domain.locations.entity.Userplace;
+import com.skku.zip.domain.locations.entity.model.Userplace;
 import com.skku.zip.domain.property.entity.Property;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;

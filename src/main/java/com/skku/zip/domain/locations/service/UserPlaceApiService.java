@@ -9,9 +9,9 @@ import com.skku.zip.domain.locations.dto.TmapPlaceCandidate;
 import com.skku.zip.domain.locations.dto.UserPlaceCreateRequest;
 import com.skku.zip.domain.locations.dto.UserPlaceResponseItem;
 import com.skku.zip.domain.locations.dto.UserPlaceUpdateRequest;
-import com.skku.zip.domain.locations.entity.RoadAddress;
-import com.skku.zip.domain.locations.entity.USER_PLACE_TYPE;
-import com.skku.zip.domain.locations.entity.Userplace;
+import com.skku.zip.domain.locations.entity.value.RoadAddress;
+import com.skku.zip.domain.locations.entity.type.USER_PLACE_TYPE;
+import com.skku.zip.domain.locations.entity.model.Userplace;
 import com.skku.zip.domain.locations.repository.UserplaceRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -53,7 +53,7 @@ public class UserPlaceApiService {
                 request.location().latitude(),
                 request.location().longitude(),
                 request.memo(),
-                request.isActive() == null || request.isActive()
+                request.isActive() == null
         );
 
         return toResponse(userplaceRepository.save(userplace));

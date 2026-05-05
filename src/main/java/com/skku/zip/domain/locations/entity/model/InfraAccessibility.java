@@ -1,5 +1,7 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.model;
 
+import com.skku.zip.domain.locations.entity.id.PropertyInfraId;
+import com.skku.zip.domain.locations.entity.value.Minutes;
 import com.skku.zip.domain.property.entity.Property;
 import jakarta.persistence.*;
 import lombok.AccessLevel;

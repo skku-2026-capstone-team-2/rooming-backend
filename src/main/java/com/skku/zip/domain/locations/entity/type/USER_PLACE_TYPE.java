@@ -1,4 +1,4 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.type;
 
 public enum USER_PLACE_TYPE {
     UNIVERSITY,

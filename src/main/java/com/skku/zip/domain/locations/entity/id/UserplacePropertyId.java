@@ -1,4 +1,4 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.id;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;

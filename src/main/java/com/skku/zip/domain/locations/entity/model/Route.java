@@ -1,5 +1,9 @@
-package com.skku.zip.domain.locations.entity;
+package com.skku.zip.domain.locations.entity.model;
 
+import com.skku.zip.domain.locations.entity.id.UserplacePropertyId;
+import com.skku.zip.domain.locations.entity.type.TRANSPORT_MODE;
+import com.skku.zip.domain.locations.entity.value.Minutes;
+import com.skku.zip.domain.locations.entity.value.Path;
 import com.skku.zip.domain.property.entity.Property;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
