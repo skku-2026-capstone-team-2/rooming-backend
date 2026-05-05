@@ -9,7 +9,7 @@ import java.util.Objects;
 
 @Embeddable
 @Getter
-public class PropertyInfrastructureId implements Serializable {
+public class PropertyInfraId implements Serializable {
 
     @Column(name = "property_id")
     private Long propertyId;
@@ -17,19 +17,19 @@ public class PropertyInfrastructureId implements Serializable {
     @Column(name = "infrastructure_id")
     private Long infrastructureId;
 
-    public PropertyInfrastructureId(Long propertyId, Long infrastructureId) {
+    public PropertyInfraId(Long propertyId, Long infrastructureId) {
         this.propertyId = propertyId;
         this.infrastructureId = infrastructureId;
     }
 
-    public PropertyInfrastructureId() {
+    public PropertyInfraId() {
 
     }
 
     @Override
     public boolean equals(Object obj) {
         if (obj == null) return false;
-        if (!(obj instanceof PropertyInfrastructureId that)) return false;
+        if (!(obj instanceof PropertyInfraId that)) return false;
         return Objects.equals(this.propertyId, that.propertyId) && Objects.equals(this.infrastructureId, that.infrastructureId);
     }
 
