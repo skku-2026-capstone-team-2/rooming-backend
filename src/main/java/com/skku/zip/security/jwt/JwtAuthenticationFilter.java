@@ -1,14 +1,17 @@
 package com.skku.zip.security.jwt;
 
+import com.skku.zip.domain.user.entity.AccountType;
 import com.skku.zip.domain.user.entity.User;
-import com.skku.zip.domain.user.repository.UserRepository;
+import com.skku.zip.domain.user.service.UserAccountService;
 import com.skku.zip.security.principal.PrincipalDetails;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,8 +25,12 @@ import java.io.IOException;
 @Component
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
     private final JwtProvider jwtProvider;
-    private final UserRepository userRepository;
+    private final UserAccountService userAccountService;
+
+    @Value("${app.auth.access-token-cookie-name:ROOMING_ACCESS_TOKEN}")
+    private String accessTokenCookieName;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -32,13 +39,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = resolveToken(request);
 
         if (StringUtils.hasText(token) && jwtProvider.validateToken(token)) {
-
             Long userId = jwtProvider.getUserIdFromToken(token);
+            AccountType accountType = jwtProvider.getAccountTypeFromToken(token);
 
             try {
-                User user = userRepository.findById(userId)
-                        .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-
+                User user = userAccountService.findByAccountTypeAndId(accountType, userId);
                 PrincipalDetails principalDetails = new PrincipalDetails(user, null);
 
                 Authentication authentication = new UsernamePasswordAuthenticationToken(
@@ -48,9 +53,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 );
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
-
             } catch (Exception e) {
-                log.error("Security Context에 인증 정보를 저장할 수 없습니다", e);
+                log.error("Could not set user authentication in security context.", e);
             }
         }
 
@@ -62,6 +66,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7);
+        }
+
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if (accessTokenCookieName.equals(cookie.getName()) && StringUtils.hasText(cookie.getValue())) {
+                    return cookie.getValue();
+                }
+            }
         }
 
         return null;
