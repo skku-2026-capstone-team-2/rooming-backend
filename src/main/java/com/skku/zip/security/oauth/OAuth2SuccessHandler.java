@@ -26,7 +26,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     private final JwtProvider jwtProvider;
 
-    @Value("${app.frontend.redirect-uri:http://localhost:3000/oauth2/redirect}")
+    @Value("${app.frontend.redirect-uri:http://localhost:8080/oauth2/redirect}")
     private String frontendRedirectUri;
 
     @Value("${app.auth.access-token-cookie-name:ROOMING_ACCESS_TOKEN}")

@@ -34,7 +34,7 @@ jwt:
 
 app:
   frontend:
-    redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:3000/oauth2/redirect}
+    redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:8080/oauth2/redirect}
     allowed-origin: ${FRONTEND_ALLOWED_ORIGIN:http://localhost:3000}
   auth:
     access-token-cookie-name: ROOMING_ACCESS_TOKEN

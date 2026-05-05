@@ -52,7 +52,6 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadableMessage(HttpMessageNotReadableException exception) {
-    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException exception) {
         return ResponseEntity.badRequest()
                 .body(ErrorResponse.of("INVALID_REQUEST", "Request body is invalid."));
     }
