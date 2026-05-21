@@ -33,6 +33,12 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("CONFLICT", exception.getMessage()));
     }
 
+    @ExceptionHandler(UpstreamServiceException.class)
+    public ResponseEntity<ErrorResponse> handleUpstreamService(UpstreamServiceException exception) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ErrorResponse.of("UPSTREAM_SERVICE_ERROR", exception.getMessage()));
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException exception) {
         String message = exception.getBindingResult().getFieldErrors().stream()

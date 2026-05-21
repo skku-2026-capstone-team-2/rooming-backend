@@ -55,8 +55,8 @@ public class SecurityConfig {
                                 "/swagger-ui/**",
                                 "/v3/api-docs/**",
                                 "/api-docs/**",
-                                "/api/v1/auth/users/google",
-                                "/api/v1/auth/brokers/google",
+                                "/api/v1/auth/seeker/google",
+                                "/api/v1/auth/broker/google",
                                 "/oauth2/**",
                                 "/login/oauth2/**"
                         ).permitAll()

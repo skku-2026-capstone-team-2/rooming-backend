@@ -1,6 +1,6 @@
 package com.skku.zip.domain.locations.repository;
 
-import com.skku.zip.domain.locations.entity.model.Userplace;
+import com.skku.zip.domain.locations.entity.model.TargetPlace;
 import com.skku.zip.domain.property.entity.Property;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
@@ -16,8 +16,8 @@ public class NearbyPropertyQueryRepository {
     @PersistenceContext
     private EntityManager entityManager;
 
-    public List<Property> findWithinFiveKilometers(Userplace userplace) {
-        return findWithinKilometers(userplace.getLatitude(), userplace.getLongitude(), DEFAULT_RADIUS_KM);
+    public List<Property> findWithinFiveKilometers(TargetPlace targetPlace) {
+        return findWithinKilometers(targetPlace.getLatitude(), targetPlace.getLongitude(), DEFAULT_RADIUS_KM);
     }
 
     public List<Property> findWithinKilometers(double latitude, double longitude, double radiusKm) {

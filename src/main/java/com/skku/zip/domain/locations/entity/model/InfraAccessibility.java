@@ -1,21 +1,24 @@
 package com.skku.zip.domain.locations.entity.model;
 
-import com.skku.zip.domain.locations.entity.id.PropertyInfraId;
+import com.skku.zip.domain.locations.entity.id.PropertyInfrastructureId;
 import com.skku.zip.domain.locations.entity.value.Minutes;
+import com.skku.zip.domain.locations.entity.value.Path;
 import com.skku.zip.domain.property.entity.Property;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
-@Table(name = "infra_accessibility")
+@Table(name = "infra_accessibilities")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class InfraAccessibility {
 
     @EmbeddedId
-    private PropertyInfraId id;
+    private PropertyInfrastructureId id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @MapsId("propertyId")
@@ -27,9 +30,14 @@ public class InfraAccessibility {
     @JoinColumn(name = "infrastructure_id", nullable = false)
     private Infrastructure infrastructure;
 
+    @Column
     private Minutes walkingTime;
 
-    public InfraAccessibility(Property property, Infrastructure infrastructure, Minutes walkingTime) {
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "walking_route_json", columnDefinition = "jsonb")
+    private Path walkingRouteJson;
+
+    public InfraAccessibility(Property property, Infrastructure infrastructure, Minutes walkingTime, Path walkingRouteJson) {
         if (property == null || property.getPropertyId() == null) {
             throw new IllegalArgumentException("Property must have an id before creating infrastructure accessibility.");
         }
@@ -37,12 +45,13 @@ public class InfraAccessibility {
             throw new IllegalArgumentException("Infrastructure must be saved before creating infrastructure accessibility.");
         }
         if (walkingTime == null) {
-            throw new IllegalArgumentException("Walking time must not be null.");
+               throw new IllegalArgumentException("Walking time must not be null.");
         }
 
         this.property = property;
         this.infrastructure = infrastructure;
-        this.id = new PropertyInfraId(property.getPropertyId(), infrastructure.getId());
+        this.id = new PropertyInfrastructureId(property.getPropertyId(), infrastructure.getId());
         this.walkingTime = walkingTime;
+        this.walkingRouteJson = walkingRouteJson;
     }
 }

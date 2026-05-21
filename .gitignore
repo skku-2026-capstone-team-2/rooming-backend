@@ -6,6 +6,9 @@ build/
 !**/src/test/**/build/
 .env
 
+### Local runtime logs ###
+bootrun-*.log
+
 ### STS ###
 .apt_generated
 .classpath

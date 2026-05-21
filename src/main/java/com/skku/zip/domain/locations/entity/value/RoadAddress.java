@@ -2,6 +2,8 @@ package com.skku.zip.domain.locations.entity.value;
 
 import lombok.Getter;
 
+import java.util.Objects;
+
 @Getter
 public class RoadAddress {
     private String value;
@@ -18,5 +20,21 @@ public class RoadAddress {
         if (value.length() > 255) {
             throw new IllegalArgumentException("Road address must be 255 characters or fewer.");
         }
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj) {
+            return true;
+        }
+        if (!(obj instanceof RoadAddress that)) {
+            return false;
+        }
+        return Objects.equals(value, that.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(value);
     }
 }

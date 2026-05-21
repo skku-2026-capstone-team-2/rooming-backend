@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
@@ -15,7 +16,13 @@ import org.locationtech.jts.geom.PrecisionModel;
 import java.sql.Timestamp;
 
 @Entity
-@Table(name = "infrastructures")
+@Table(
+        name = "infrastructures",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_infrastructures_address",
+                columnNames = "address"
+        )
+)
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Infrastructure {
@@ -36,14 +43,14 @@ public class Infrastructure {
     @Column(nullable = false, columnDefinition = "geography(Point,4326)")
     private Point location;
 
-    @Column(name = "road_address")
+    @Column
     private RoadAddress address;
 
     @CreationTimestamp
     @Column(name = "created_at")
     private Timestamp createdAt;
 
-    @CreationTimestamp
+    @UpdateTimestamp
     @Column(name = "updated_at")
     private Timestamp updatedAt;
 

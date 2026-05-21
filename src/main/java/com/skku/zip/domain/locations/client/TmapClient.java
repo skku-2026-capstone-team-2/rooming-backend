@@ -1,13 +1,15 @@
 package com.skku.zip.domain.locations.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.skku.zip.domain.locations.dto.OdsayRouteCandidate;
 import com.skku.zip.domain.locations.dto.TmapInfrastructureCandidate;
 import com.skku.zip.domain.locations.dto.TmapPlaceCandidate;
-import com.skku.zip.domain.locations.dto.TmapUserplaceInfo;
 import com.skku.zip.domain.locations.entity.type.INFRA_CATEGORY;
-import com.skku.zip.domain.locations.entity.type.PLACE_CATEGORY;
+import com.skku.zip.domain.locations.entity.value.Minutes;
+import com.skku.zip.domain.locations.entity.value.Path;
 import com.skku.zip.domain.locations.entity.value.RoadAddress;
-import lombok.RequiredArgsConstructor;
+import com.skku.zip.domain.locations.entity.value.RoutePoint;
+import com.skku.zip.domain.locations.entity.value.SubPath;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -21,13 +23,12 @@ import java.util.Map;
 import java.util.Optional;
 
 @Component
-@RequiredArgsConstructor
 public class TmapClient {
 
-    private static final String DEFAULT_NAME = "Selected place";
     private static final int MAX_POI_COUNT = 200;
-    private static final String POI_CATEGORIES =
-            "\uD559\uAD50;\uC9C0\uD558\uCCA0;\uBC84\uC2A4\uC815\uB958\uC7A5;\uBC84\uC2A4;\uC8FC\uC694\uC2DC\uC124\uBB3C;\uAD00\uACF5\uC11C";
+    private static final int WALK_TRAFFIC_TYPE = 3;
+    private static final int SECONDS_PER_MINUTE = 60;
+    private static final double WALKING_METERS_PER_MINUTE = 67.0;
     private static final Map<INFRA_CATEGORY, String> INFRA_CATEGORY_QUERIES = Map.ofEntries(
             Map.entry(INFRA_CATEGORY.CONVENIENT_STORE, "\uD3B8\uC758\uC810"),
             Map.entry(INFRA_CATEGORY.MART, "\uB9C8\uD2B8;\uB300\uD615\uB9C8\uD2B8"),
@@ -48,17 +49,10 @@ public class TmapClient {
     @Value("${tmap.base-url}")
     private String baseUrl;
 
-    private final RestClient restClient = RestClient.create();
+    private final RestClient restClient;
 
-    public TmapUserplaceInfo resolveUserplace(double latitude, double longitude) {
-        String address = findAddress(latitude, longitude);
-        TmapPoi poi = findNearestPoi(latitude, longitude);
-
-        String name = firstNonBlank(poi.name(), address, DEFAULT_NAME);
-        PLACE_CATEGORY category = mapCategory(poi.category());
-        RoadAddress roadAddress = address == null || address.isBlank() ? null : new RoadAddress(address);
-
-        return new TmapUserplaceInfo(name, category, roadAddress);
+    public TmapClient(RestClient.Builder restClientBuilder) {
+        this.restClient = restClientBuilder.build();
     }
 
     public List<TmapInfrastructureCandidate> findInfrastructureCandidates(
@@ -118,61 +112,163 @@ public class TmapClient {
         }
     }
 
-    private String findAddress(double latitude, double longitude) {
-        JsonNode response = restClient.get()
-                .uri(baseUrl + "/geo/reversegeocoding"
-                                + "?version=1&lat={latitude}&lon={longitude}"
-                                + "&coordType=WGS84GEO&addressType=A10&newAddressExtend=Y",
-                        latitude,
-                        longitude)
-                .accept(MediaType.APPLICATION_JSON)
-                .header("appKey", apiKey)
-                .retrieve()
-                .body(JsonNode.class);
+    public Optional<OdsayRouteCandidate> findWalkingRoute(
+            double startLatitude,
+            double startLongitude,
+            double endLatitude,
+            double endLongitude
+    ) {
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("startX", startLongitude);
+        request.put("startY", startLatitude);
+        request.put("endX", endLongitude);
+        request.put("endY", endLatitude);
+        request.put("reqCoordType", "WGS84GEO");
+        request.put("resCoordType", "WGS84GEO");
+        request.put("startName", "start");
+        request.put("endName", "end");
+        request.put("searchOption", "0");
+        request.put("sort", "index");
 
-        if (response == null) {
-            return null;
-        }
-
-        JsonNode addressInfo = response.path("addressInfo");
-        return firstNonBlank(
-                text(addressInfo, "fullAddress"),
-                text(addressInfo, "roadAddress"),
-                text(addressInfo, "legalDong"),
-                text(addressInfo, "adminDong")
-        );
-    }
-
-    private TmapPoi findNearestPoi(double latitude, double longitude) {
         try {
-            JsonNode response = restClient.get()
-                    .uri(baseUrl + "/pois/search/around"
-                                    + "?version=1&centerLon={longitude}&centerLat={latitude}"
-                                    + "&radius=1&count=1&page=1&categories={categories}"
-                                    + "&resCoordType=WGS84GEO&reqCoordType=WGS84GEO",
-                            longitude,
-                            latitude,
-                            POI_CATEGORIES)
+            JsonNode response = restClient.post()
+                    .uri(baseUrl + "/routes/pedestrian?version=1")
+                    .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .header("appKey", apiKey)
+                    .body(request)
                     .retrieve()
                     .body(JsonNode.class);
 
-            JsonNode firstPoi = response == null
-                    ? null
-                    : response.path("searchPoiInfo").path("pois").path("poi").path(0);
+            return toWalkingRoute(response, startLatitude, startLongitude, endLatitude, endLongitude);
+        } catch (RestClientException e) {
+            return Optional.empty();
+        }
+    }
 
-            if (firstPoi == null || firstPoi.isMissingNode()) {
-                return TmapPoi.empty();
+    private Optional<OdsayRouteCandidate> toWalkingRoute(
+            JsonNode response,
+            double startLatitude,
+            double startLongitude,
+            double endLatitude,
+            double endLongitude
+    ) {
+        if (response == null || response.has("error")) {
+            return Optional.empty();
+        }
+
+        JsonNode features = response.path("features");
+        if (!features.isArray()) {
+            return Optional.empty();
+        }
+
+        int totalSeconds = -1;
+        int totalDistanceMeters = -1;
+        int summedSectionSeconds = 0;
+        List<SubPath> subPaths = new ArrayList<>();
+
+        for (JsonNode feature : features) {
+            JsonNode properties = feature.path("properties");
+            if (totalSeconds < 0) {
+                totalSeconds = properties.path("totalTime").asInt(-1);
+            }
+            if (totalDistanceMeters < 0) {
+                totalDistanceMeters = properties.path("totalDistance").asInt(-1);
             }
 
-            return new TmapPoi(
-                    firstNonBlank(text(firstPoi, "name"), text(firstPoi, "newAddressList.newAddress.fullAddressRoad")),
-                    firstNonBlank(text(firstPoi, "bizCatName"), text(firstPoi, "upperBizName"), text(firstPoi, "middleBizName"))
-            );
-        } catch (RestClientException e) {
-            return TmapPoi.empty();
+            JsonNode geometry = feature.path("geometry");
+            if (!"LineString".equals(geometry.path("type").asText())) {
+                continue;
+            }
+
+            int sectionSeconds = properties.path("time").asInt(0);
+            summedSectionSeconds += sectionSeconds;
+
+            int distanceMeters = properties.path("distance").asInt(-1);
+            String roadName = firstNonBlank(text(properties, "name"), text(properties, "roadName"));
+            String description = firstNonBlank(text(properties, "description"), roadName);
+
+            subPaths.add(new SubPath(
+                    WALK_TRAFFIC_TYPE,
+                    secondsToMinutes(sectionSeconds),
+                    null,
+                    null,
+                    roadName,
+                    distanceMeters >= 0 ? distanceMeters : null,
+                    description,
+                    routePoints(geometry.path("coordinates"))
+            ));
         }
+
+        if (totalSeconds < 0 && summedSectionSeconds > 0) {
+            totalSeconds = summedSectionSeconds;
+        }
+
+        Optional<Minutes> duration = walkingDuration(totalSeconds, totalDistanceMeters);
+        if (duration.isEmpty()) {
+            return Optional.empty();
+        }
+
+        if (subPaths.isEmpty()) {
+            subPaths = List.of(new SubPath(
+                    WALK_TRAFFIC_TYPE,
+                    duration.get(),
+                    null,
+                    null,
+                    null,
+                    totalDistanceMeters >= 0 ? totalDistanceMeters : null,
+                    null,
+                    List.of(
+                            new RoutePoint(startLatitude, startLongitude),
+                            new RoutePoint(endLatitude, endLongitude)
+                    )
+            ));
+        }
+
+        return Optional.of(new OdsayRouteCandidate(
+                duration.get(),
+                new Path(duration.get(), 0, subPaths)
+        ));
+    }
+
+    private Optional<Minutes> walkingDuration(int totalSeconds, int totalDistanceMeters) {
+        if (totalSeconds >= 0) {
+            return Optional.of(secondsToMinutes(totalSeconds));
+        }
+        if (totalDistanceMeters > 0) {
+            return Optional.of(estimateWalkingMinutes(totalDistanceMeters));
+        }
+        return Optional.empty();
+    }
+
+    private Minutes secondsToMinutes(int seconds) {
+        return new Minutes((int) Math.ceil((double) seconds / SECONDS_PER_MINUTE));
+    }
+
+    private Minutes estimateWalkingMinutes(int distanceMeters) {
+        return new Minutes((int) Math.ceil(distanceMeters / WALKING_METERS_PER_MINUTE));
+    }
+
+    private List<RoutePoint> routePoints(JsonNode coordinates) {
+        if (!coordinates.isArray()) {
+            return List.of();
+        }
+
+        List<RoutePoint> points = new ArrayList<>();
+        for (JsonNode coordinate : coordinates) {
+            if (!coordinate.isArray() || coordinate.size() < 2) {
+                continue;
+            }
+
+            JsonNode longitude = coordinate.get(0);
+            JsonNode latitude = coordinate.get(1);
+            if (longitude.isNumber() && latitude.isNumber()) {
+                points.add(new RoutePoint(latitude.asDouble(), longitude.asDouble()));
+                continue;
+            }
+            points.addAll(routePoints(coordinate));
+        }
+        return points;
     }
 
     private JsonNode findPoisAround(double latitude, double longitude, int radiusKm, String categories) {
@@ -200,7 +296,7 @@ public class TmapClient {
         }
     }
 
-    private Optional<TmapInfrastructureCandidate> toInfrastructureCandidate(INFRA_CATEGORY category, JsonNode poi) {
+    private Optional<TmapInfrastructureCandidate> toInfrastructureCandidate(INFRA_CATEGORY fallbackCategory, JsonNode poi) {
         String name = text(poi, "name");
         Optional<Double> latitude = firstDouble(poi, "frontLat", "noorLat", "centerLat");
         Optional<Double> longitude = firstDouble(poi, "frontLon", "noorLon", "centerLon");
@@ -214,6 +310,8 @@ public class TmapClient {
                 roadAddressText(poi),
                 jibunAddressText(poi)
         );
+        INFRA_CATEGORY category = INFRA_CATEGORY.fromMiddleBizName(text(poi, "middleBizName"))
+                .orElse(fallbackCategory);
 
         return Optional.of(new TmapInfrastructureCandidate(
                 firstNonBlank(text(poi, "id"), text(poi, "pkey")),
@@ -247,24 +345,6 @@ public class TmapClient {
                 latitude.get(),
                 longitude.get()
         ));
-    }
-
-    private PLACE_CATEGORY mapCategory(String category) {
-        if (category == null) {
-            return PLACE_CATEGORY.COMPANY;
-        }
-
-        String normalized = category.toLowerCase();
-        if (normalized.contains("\uD559\uAD50") || normalized.contains("\uB300\uD559") || normalized.contains("school")) {
-            return PLACE_CATEGORY.SCHOOL;
-        }
-        if (normalized.contains("\uC9C0\uD558\uCCA0") || normalized.contains("subway")) {
-            return PLACE_CATEGORY.SUBWAY_STATION;
-        }
-        if (normalized.contains("\uBC84\uC2A4") || normalized.contains("\uD130\uBBF8\uB110") || normalized.contains("bus")) {
-            return PLACE_CATEGORY.BUS_TERMINAL;
-        }
-        return PLACE_CATEGORY.COMPANY;
     }
 
     private String text(JsonNode node, String path) {
@@ -353,9 +433,4 @@ public class TmapClient {
                 + Math.round(candidate.longitude() * 1_000_000);
     }
 
-    private record TmapPoi(String name, String category) {
-        private static TmapPoi empty() {
-            return new TmapPoi(null, null);
-        }
-    }
 }

@@ -3,7 +3,7 @@ package com.skku.zip.domain.user.service;
 import com.skku.zip.domain.broker.repository.BrokerRepository;
 import com.skku.zip.domain.user.entity.AccountType;
 import com.skku.zip.domain.user.entity.User;
-import com.skku.zip.domain.user.repository.SeekerRepository;
+import com.skku.zip.domain.seeker.repository.SeekerRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
