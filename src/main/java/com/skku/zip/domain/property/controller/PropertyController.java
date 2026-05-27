@@ -1,12 +1,20 @@
 package com.skku.zip.domain.property.controller;
 
+import com.skku.zip.common.dto.ApiResponse;
+import com.skku.zip.domain.property.dto.Property3DResponse;
+import com.skku.zip.domain.property.dto.PropertyDetailResponse;
+import com.skku.zip.domain.property.dto.PropertyImageResponse;
 import com.skku.zip.domain.property.entity.Property;
 import com.skku.zip.domain.property.service.PropertyService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -18,39 +26,38 @@ public class PropertyController {
     private final PropertyService propertyService;
 
     @GetMapping
-    public ResponseEntity<?> getAll() {
-
-        return ResponseEntity.ok(propertyService.getAll());
+    public ResponseEntity<ApiResponse<List<Property>>> getAll() {
+        return ResponseEntity.ok(ApiResponse.success(
+                propertyService.getAll(),
+                "Property list fetched."
+        ));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", propertyService.getById(id),
-                "message", "매물 상세 조회 성공"
+    public ResponseEntity<ApiResponse<PropertyDetailResponse>> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                propertyService.getById(id),
+                "Property detail fetched."
         ));
     }
 
     @GetMapping("/{id}/images")
-    public ResponseEntity<?> getImages(@PathVariable Long id) {
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", Map.of(
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getImages(@PathVariable Long id) {
+        List<PropertyImageResponse> images = propertyService.getImages(id);
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of(
                         "propertyId", id,
-                        "images", propertyService.getImages(id)
+                        "images", images
                 ),
-                "message", "매물 이미지 조회 성공"
+                "Property images fetched."
         ));
     }
 
     @GetMapping("/{id}/3d")
-    public ResponseEntity<?> get3D(@PathVariable Long id) {
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "data", propertyService.get3D(id),
-                "message", "3D 모델 조회 성공"
+    public ResponseEntity<ApiResponse<Property3DResponse>> get3D(@PathVariable Long id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                propertyService.get3D(id),
+                "3D model fetched."
         ));
     }
-
 }

@@ -48,7 +48,7 @@ class AiRecommendationClientContractTest {
         AiRecommendationDtos.Request request = new AiRecommendationDtos.Request(
                 "Find a quiet studio near campus.",
                 List.of("quiet", "low maintenance fee"),
-                List.of(29L, 31L, 37L),
+                7L,
                 3
         );
         String aiResponseJson = """
@@ -77,7 +77,7 @@ class AiRecommendationClientContractTest {
                         {
                           "query": "Find a quiet studio near campus.",
                           "preferences": ["quiet", "low maintenance fee"],
-                          "target_places": [29, 31, 37],
+                          "seeker_id": 7,
                           "top_n": 3
                         }
                         """))

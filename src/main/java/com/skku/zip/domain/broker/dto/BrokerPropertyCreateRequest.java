@@ -1,9 +1,13 @@
 package com.skku.zip.domain.broker.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.skku.zip.domain.locations.dto.CoordinateDto;
+import com.skku.zip.domain.property.entity.TradeType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+
+import java.util.List;
 
 public record BrokerPropertyCreateRequest(
         @NotBlank
@@ -11,12 +15,16 @@ public record BrokerPropertyCreateRequest(
 
         String propertyType,
 
-        String transactionType,
+        @JsonAlias("trade_type")
+        @NotNull
+        TradeType tradeType,
 
         @NotNull
         Integer depositAmount,
 
         Integer monthlyRent,
+
+        List<String> tags,
 
         Integer maintenanceFee,
 

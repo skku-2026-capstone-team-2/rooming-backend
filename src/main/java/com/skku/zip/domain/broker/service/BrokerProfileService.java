@@ -33,15 +33,22 @@ public class BrokerProfileService {
     @Transactional
     public BrokerProfileData updateAdditionalInfo(
             Broker broker,
-            BrokerAdditionalInfoRequest request,
-            MultipartFile verificationDocument
+            BrokerAdditionalInfoRequest request
     ) {
         Broker managedBroker = findBroker(broker);
-        byte[] documentBytes = verificationDocumentBytes(verificationDocument);
         managedBroker.updateAdditionalInfo(
                 findOffice(request.officeId()),
                 request.registrationNo(),
-                request.phoneNumber(),
+                request.phoneNumber()
+        );
+        return toData(managedBroker);
+    }
+
+    @Transactional
+    public BrokerProfileData updateVerificationDocument(Broker broker, MultipartFile verificationDocument) {
+        Broker managedBroker = findBroker(broker);
+        byte[] documentBytes = verificationDocumentBytes(verificationDocument);
+        managedBroker.updateVerificationDocument(
                 verificationDocument.getOriginalFilename(),
                 verificationDocument.getContentType(),
                 documentBytes

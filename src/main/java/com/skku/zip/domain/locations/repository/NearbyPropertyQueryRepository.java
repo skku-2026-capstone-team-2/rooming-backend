@@ -23,7 +23,7 @@ public class NearbyPropertyQueryRepository {
     public List<Property> findWithinKilometers(double latitude, double longitude, double radiusKm) {
         String sql = """
                 SELECT *
-                FROM property p
+                FROM properties p
                 WHERE p.latitude IS NOT NULL
                   AND p.longitude IS NOT NULL
                   AND (

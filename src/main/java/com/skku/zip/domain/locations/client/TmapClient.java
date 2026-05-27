@@ -3,7 +3,6 @@ package com.skku.zip.domain.locations.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.skku.zip.domain.locations.dto.OdsayRouteCandidate;
 import com.skku.zip.domain.locations.dto.TmapInfrastructureCandidate;
-import com.skku.zip.domain.locations.dto.TmapPlaceCandidate;
 import com.skku.zip.domain.locations.entity.type.INFRA_CATEGORY;
 import com.skku.zip.domain.locations.entity.value.Minutes;
 import com.skku.zip.domain.locations.entity.value.Path;
@@ -15,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -23,6 +23,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @Component
+@Slf4j
 public class TmapClient {
 
     private static final int MAX_POI_COUNT = 200;
@@ -63,7 +64,12 @@ public class TmapClient {
         Map<String, TmapInfrastructureCandidate> candidates = new LinkedHashMap<>();
 
         for (INFRA_CATEGORY category : INFRA_CATEGORY.values()) {
-            JsonNode pois = findPoisAround(latitude, longitude, radiusKm, INFRA_CATEGORY_QUERIES.get(category));
+            String query = INFRA_CATEGORY_QUERIES.get(category);
+            if (query == null || query.isBlank()) {
+                continue;
+            }
+
+            JsonNode pois = findPoisAround(latitude, longitude, radiusKm, query);
             if (pois == null || !pois.isArray()) {
                 continue;
             }
@@ -75,41 +81,6 @@ public class TmapClient {
         }
 
         return new ArrayList<>(candidates.values());
-    }
-
-    public List<TmapPlaceCandidate> searchPlaces(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            return List.of();
-        }
-
-        try {
-            JsonNode response = restClient.get()
-                    .uri(baseUrl + "/pois"
-                                    + "?version=1&searchKeyword={keyword}&searchType=all"
-                                    + "&page=1&count=10&resCoordType=WGS84GEO&multiPoint=N"
-                                    + "&searchtypCd=A&reqCoordType=WGS84GEO&poiGroupYn=N",
-                            keyword.trim())
-                    .accept(MediaType.APPLICATION_JSON)
-                    .header("appKey", apiKey)
-                    .retrieve()
-                    .body(JsonNode.class);
-
-            JsonNode pois = response == null
-                    ? null
-                    : response.path("searchPoiInfo").path("pois").path("poi");
-
-            if (pois == null || !pois.isArray()) {
-                return List.of();
-            }
-
-            List<TmapPlaceCandidate> places = new ArrayList<>();
-            for (JsonNode poi : pois) {
-                toPlaceCandidate(poi).ifPresent(places::add);
-            }
-            return places;
-        } catch (RestClientException e) {
-            return List.of();
-        }
     }
 
     public Optional<OdsayRouteCandidate> findWalkingRoute(
@@ -140,8 +111,32 @@ public class TmapClient {
                     .retrieve()
                     .body(JsonNode.class);
 
-            return toWalkingRoute(response, startLatitude, startLongitude, endLatitude, endLongitude);
+            Optional<OdsayRouteCandidate> candidate = toWalkingRoute(
+                    response,
+                    startLatitude,
+                    startLongitude,
+                    endLatitude,
+                    endLongitude
+            );
+            if (candidate.isEmpty()) {
+                log.warn(
+                        "TMAP walking route response did not map to a candidate for start=({}, {}), end=({}, {})",
+                        startLatitude,
+                        startLongitude,
+                        endLatitude,
+                        endLongitude
+                );
+            }
+            return candidate;
         } catch (RestClientException e) {
+            log.warn(
+                    "TMAP walking route request failed for start=({}, {}), end=({}, {}): {}",
+                    startLatitude,
+                    startLongitude,
+                    endLatitude,
+                    endLongitude,
+                    e.getMessage()
+            );
             return Optional.empty();
         }
     }
@@ -288,10 +283,26 @@ public class TmapClient {
                     .retrieve()
                     .body(JsonNode.class);
 
-            return response == null
+            JsonNode pois = response == null
                     ? null
                     : response.path("searchPoiInfo").path("pois").path("poi");
+            if (pois == null || !pois.isArray()) {
+                log.warn(
+                        "TMAP infrastructure search returned no POI array for lat={}, lon={}, radiusKm={}",
+                        latitude,
+                        longitude,
+                        radiusKm
+                );
+            }
+            return pois;
         } catch (RestClientException e) {
+            log.warn(
+                    "TMAP infrastructure search failed for lat={}, lon={}, radiusKm={}: {}",
+                    latitude,
+                    longitude,
+                    radiusKm,
+                    e.getMessage()
+            );
             return null;
         }
     }
@@ -306,7 +317,7 @@ public class TmapClient {
         }
 
         String address = firstNonBlank(
-                text(poi, "newAddressList.newAddress.fullAddressRoad"),
+                newRoadAddressText(poi),
                 roadAddressText(poi),
                 jibunAddressText(poi)
         );
@@ -320,30 +331,6 @@ public class TmapClient {
                 latitude.get(),
                 longitude.get(),
                 address == null ? null : new RoadAddress(address)
-        ));
-    }
-
-    private Optional<TmapPlaceCandidate> toPlaceCandidate(JsonNode poi) {
-        String name = text(poi, "name");
-        Optional<Double> latitude = firstDouble(poi, "frontLat", "noorLat", "centerLat");
-        Optional<Double> longitude = firstDouble(poi, "frontLon", "noorLon", "centerLon");
-
-        if (name == null || latitude.isEmpty() || longitude.isEmpty()) {
-            return Optional.empty();
-        }
-
-        String address = firstNonBlank(
-                text(poi, "newAddressList.newAddress.fullAddressRoad"),
-                roadAddressText(poi),
-                jibunAddressText(poi)
-        );
-
-        return Optional.of(new TmapPlaceCandidate(
-                firstNonBlank(text(poi, "id"), text(poi, "pkey")),
-                name,
-                address,
-                latitude.get(),
-                longitude.get()
         ));
     }
 
@@ -375,8 +362,8 @@ public class TmapClient {
             return null;
         }
 
-        String buildingNo1 = text(poi, "buildingNo1");
-        String buildingNo2 = text(poi, "buildingNo2");
+        String buildingNo1 = firstNonBlank(text(poi, "buildingNo1"), text(poi, "firstBuildNo"));
+        String buildingNo2 = firstNonBlank(text(poi, "buildingNo2"), text(poi, "secondBuildNo"));
         if (buildingNo1 == null || buildingNo1.isBlank() || "0".equals(buildingNo1)) {
             return roadName;
         }
@@ -385,6 +372,14 @@ public class TmapClient {
                 : buildingNo1 + "-" + buildingNo2;
 
         return firstNonBlank(roadName + " " + buildingNumber, roadName);
+    }
+
+    private String newRoadAddressText(JsonNode poi) {
+        JsonNode newAddress = poi.path("newAddressList").path("newAddress");
+        if (newAddress.isArray() && !newAddress.isEmpty()) {
+            return text(newAddress.get(0), "fullAddressRoad");
+        }
+        return text(newAddress, "fullAddressRoad");
     }
 
     private String jibunAddressText(JsonNode poi) {

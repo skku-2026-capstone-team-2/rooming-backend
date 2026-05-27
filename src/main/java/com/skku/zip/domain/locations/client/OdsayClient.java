@@ -11,13 +11,20 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import lombok.extern.slf4j.Slf4j;
 
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 @Component
+@Slf4j
 public class OdsayClient {
+
+    private static final String ROUTE_GRAPHIC_MAP_OBJECT_PREFIX = "0:0@";
 
     @Value("${odsay.api-key}")
     private String apiKey;
@@ -70,7 +77,7 @@ public class OdsayClient {
         Minutes selectedDuration = new Minutes(selectedTotalMinutes);
         Path routePath = new Path(
                 selectedDuration,
-                selectedInfo.path("transferCount").asInt(0),
+                transferCount(selectedInfo),
                 parseSubPaths(
                         selectedPathNode.path("subPath"),
                         loadRouteGraphics(text(selectedInfo, "mapObj"))
@@ -86,20 +93,30 @@ public class OdsayClient {
             double endLongitude
     ) {
         try {
-            return Optional.ofNullable(restClient.get()
-                    .uri(baseUrl + "/searchPubTransPathT"
-                                    + "?SX={startLongitude}&SY={startLatitude}"
-                                    + "&EX={endLongitude}&EY={endLatitude}"
-                                    + "&OPT=0&SearchType=0&apiKey={apiKey}",
-                            startLongitude,
-                            startLatitude,
-                            endLongitude,
-                            endLatitude,
-                            apiKey)
+            Optional<JsonNode> response = Optional.ofNullable(restClient.get()
+                    .uri(searchPathUri(startLatitude, startLongitude, endLatitude, endLongitude))
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .body(JsonNode.class));
+            if (response.isEmpty()) {
+                log.warn(
+                        "ODSAY public transport route response was empty for start=({}, {}), end=({}, {})",
+                        startLatitude,
+                        startLongitude,
+                        endLatitude,
+                        endLongitude
+                );
+            }
+            return response;
         } catch (RestClientException e) {
+            log.warn(
+                    "ODSAY public transport route request failed for start=({}, {}), end=({}, {}): {}",
+                    startLatitude,
+                    startLongitude,
+                    endLatitude,
+                    endLongitude,
+                    e.getMessage()
+            );
             return Optional.empty();
         }
     }
@@ -111,12 +128,13 @@ public class OdsayClient {
 
         try {
             JsonNode response = restClient.get()
-                    .uri(baseUrl + "/loadLane?mapObject={mapObject}&apiKey={apiKey}", mapObject, apiKey)
+                    .uri(routeGraphicUri(mapObject))
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
                     .body(JsonNode.class);
             return lanePoints(response == null ? null : response.path("result").path("lane"));
         } catch (RestClientException e) {
+            log.warn("ODSAY route graphic request failed for mapObject={}: {}", mapObject, e.getMessage());
             return List.of();
         }
     }
@@ -181,6 +199,16 @@ public class OdsayClient {
         return trafficType == 1 || trafficType == 2;
     }
 
+    private int transferCount(JsonNode info) {
+        if (info.has("transferCount")) {
+            return info.path("transferCount").asInt(0);
+        }
+
+        int transitCount = info.path("busTransitCount").asInt(0)
+                + info.path("subwayTransitCount").asInt(0);
+        return Math.max(transitCount - 1, 0);
+    }
+
     private Integer distanceMeters(JsonNode subPathNode) {
         Optional<Double> distance = number(subPathNode, "distance");
         if (distance.isEmpty() || distance.get() < 0) {
@@ -242,20 +270,59 @@ public class OdsayClient {
     }
 
     private String laneName(JsonNode lanes) {
+        if (lanes.isObject()) {
+            return firstNonBlank(text(lanes, "busNo"), text(lanes, "name"));
+        }
         if (!lanes.isArray() || lanes.isEmpty()) {
             return null;
         }
 
         JsonNode firstLane = lanes.get(0);
-        String busNo = text(firstLane, "busNo");
-        if (busNo != null) {
-            return busNo;
-        }
-        return text(firstLane, "name");
+        return firstNonBlank(text(firstLane, "busNo"), text(firstLane, "name"));
     }
 
     private String text(JsonNode node, String field) {
         JsonNode value = node.path(field);
         return value.isMissingNode() || value.isNull() || value.asText().isBlank() ? null : value.asText();
+    }
+
+    private String routeGraphicMapObject(String mapObject) {
+        if (mapObject.startsWith(ROUTE_GRAPHIC_MAP_OBJECT_PREFIX)) {
+            return mapObject;
+        }
+        return ROUTE_GRAPHIC_MAP_OBJECT_PREFIX + mapObject;
+    }
+
+    private URI searchPathUri(
+            double startLatitude,
+            double startLongitude,
+            double endLatitude,
+            double endLongitude
+    ) {
+        return URI.create(baseUrl + "/searchPubTransPathT"
+                + "?SX=" + startLongitude
+                + "&SY=" + startLatitude
+                + "&EX=" + endLongitude
+                + "&EY=" + endLatitude
+                + "&apiKey=" + queryValue(apiKey));
+    }
+
+    private URI routeGraphicUri(String mapObject) {
+        return URI.create(baseUrl + "/loadLane"
+                + "?mapObject=" + queryValue(routeGraphicMapObject(mapObject))
+                + "&apiKey=" + queryValue(apiKey));
+    }
+
+    private String queryValue(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8);
+    }
+
+    private String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 }

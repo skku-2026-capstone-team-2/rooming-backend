@@ -1,13 +1,15 @@
 package com.skku.zip.domain.locations.client;
 
 import com.skku.zip.domain.locations.dto.OdsayRouteCandidate;
-import com.skku.zip.domain.locations.dto.TmapPlaceCandidate;
+import com.skku.zip.domain.locations.dto.TmapInfrastructureCandidate;
+import com.skku.zip.domain.locations.entity.type.INFRA_CATEGORY;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.client.ExpectedCount;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -17,7 +19,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
-import static org.springframework.test.web.client.match.MockRestRequestMatchers.queryParam;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestToUriTemplate;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
@@ -44,54 +45,31 @@ class TmapClientContractTest {
     }
 
     @Test
-    void placeSearchShowsTmapRequestAndMappedResponse() {
-        String tmapResponse = """
+    void infrastructureSearchSkipsEtcCategoryWithoutTmapKeyword() {
+        String emptyTmapResponse = """
                 {
                   "searchPoiInfo": {
                     "pois": {
-                      "poi": [
-                        {
-                          "id": "poi-100",
-                          "name": "Sungkyunkwan University",
-                          "frontLat": "37.2945",
-                          "frontLon": "126.9748",
-                          "newAddressList": {
-                            "newAddress": {
-                              "fullAddressRoad": "2066 Seobu-ro, Jangan-gu, Suwon"
-                            }
-                          }
-                        }
-                      ]
+                      "poi": []
                     }
                   }
                 }
                 """;
 
-        server.expect(requestToUriTemplate(
-                        BASE_URL + "/pois"
-                                + "?version=1&searchKeyword={keyword}&searchType=all"
-                                + "&page=1&count=10&resCoordType=WGS84GEO&multiPoint=N"
-                                + "&searchtypCd=A&reqCoordType=WGS84GEO&poiGroupYn=N",
-                        "campus"
-                ))
+        server.expect(ExpectedCount.times(INFRA_CATEGORY.values().length - 1), request -> {
+                    assertThat(request.getURI().getQuery()).doesNotContain("categories=null");
+                })
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("appKey", API_KEY))
-                .andExpect(queryParam("searchKeyword", "campus"))
-                .andExpect(ExternalApiTrace.printRequest("TMAP place search"))
-                .andRespond(withSuccess(tmapResponse, MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess(emptyTmapResponse, MediaType.APPLICATION_JSON));
 
-        List<TmapPlaceCandidate> candidates = tmapClient.searchPlaces("campus");
-
-        ExternalApiTrace.printExternalResponse("TMAP place search", tmapResponse);
-        ExternalApiTrace.printMappedResult("TMAP place search", candidates);
-
-        assertThat(candidates).containsExactly(new TmapPlaceCandidate(
-                "poi-100",
-                "Sungkyunkwan University",
-                "2066 Seobu-ro, Jangan-gu, Suwon",
+        List<TmapInfrastructureCandidate> candidates = tmapClient.findInfrastructureCandidates(
                 37.2945,
-                126.9748
-        ));
+                126.9748,
+                2
+        );
+
+        assertThat(candidates).isEmpty();
     }
 
     @Test

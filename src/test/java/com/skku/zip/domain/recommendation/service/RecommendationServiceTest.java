@@ -15,7 +15,9 @@ import com.skku.zip.domain.locations.entity.value.SubPath;
 import com.skku.zip.domain.locations.repository.InfraAccessibilityRepository;
 import com.skku.zip.domain.locations.repository.InfrastructureRepository;
 import com.skku.zip.domain.locations.repository.RouteRepository;
+import com.skku.zip.domain.locations.service.RouteGeometryService;
 import com.skku.zip.domain.property.entity.Property;
+import com.skku.zip.domain.property.entity.TradeType;
 import com.skku.zip.domain.property.repository.PropertyRepository;
 import com.skku.zip.domain.recommendation.client.AiRecommendationClient;
 import com.skku.zip.domain.recommendation.dto.AiRecommendationDtos;
@@ -25,6 +27,7 @@ import com.skku.zip.domain.recommendation.repository.RecommendationRepository;
 import com.skku.zip.domain.seeker.entity.Seeker;
 import com.skku.zip.domain.seeker.repository.SeekerRepository;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
@@ -33,6 +36,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RecommendationServiceTest {
@@ -41,6 +45,7 @@ class RecommendationServiceTest {
     private final SeekerRepository seekerRepository = mock(SeekerRepository.class);
     private final PropertyRepository propertyRepository = mock(PropertyRepository.class);
     private final RouteRepository routeRepository = mock(RouteRepository.class);
+    private final RouteGeometryService routeGeometryService = new RouteGeometryService();
     private final InfraAccessibilityRepository infraAccessibilityRepository = mock(InfraAccessibilityRepository.class);
     private final InfrastructureRepository infrastructureRepository = mock(InfrastructureRepository.class);
     private final RecommendationRepository recommendationRepository = mock(RecommendationRepository.class);
@@ -49,6 +54,7 @@ class RecommendationServiceTest {
             seekerRepository,
             propertyRepository,
             routeRepository,
+            routeGeometryService,
             infraAccessibilityRepository,
             infrastructureRepository,
             recommendationRepository,
@@ -88,17 +94,27 @@ class RecommendationServiceTest {
         RecommendationDtos.Result result = data.results().getFirst();
         assertThat(result.recommendationId()).isEqualTo(7001L);
         assertThat(result.property().location().latitude()).isEqualTo(37.2945);
+        assertThat(result.property().tradeType()).isEqualTo(TradeType.MONTHLY_RENT);
         assertThat(result.property().depositAmount()).isEqualTo(500);
         assertThat(result.property().monthlyRent()).isEqualTo(55);
         assertThat(result.property().maintenanceFee()).isEqualTo(5);
+        assertThat(result.property().description()).isEqualTo("Quiet studio near campus.");
+        assertThat(result.property().tags()).containsExactly("quiet", "campus");
         assertThat(result.firstTargetPlaceRoute().targetPlaceId()).isEqualTo(29L);
         assertThat(result.firstTargetPlaceRoute().durationMinutes()).isEqualTo(18);
+        assertThat(result.firstTargetPlaceRoute().subPaths()).hasSize(1);
         assertThat(result.infrastructures())
                 .extracting(RecommendationDtos.InfrastructureDetails::walkingMinutes)
                 .containsExactly(4, 7, 9);
         assertThat(result.infrastructures())
                 .extracting(item -> item.location().latitude())
                 .containsExactly(37.2940, 37.2940, 37.2940);
+
+        ArgumentCaptor<AiRecommendationDtos.Request> requestCaptor = ArgumentCaptor.forClass(
+                AiRecommendationDtos.Request.class
+        );
+        verify(aiRecommendationClient).recommend(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().seekerId()).isEqualTo(1L);
     }
 
     private Seeker seekerWithTargetPlace(Long targetPlaceId) {
@@ -139,9 +155,12 @@ class RecommendationServiceTest {
                 .propertyId(101L)
                 .latitude(37.2945)
                 .longitude(126.9748)
+                .tradeType(TradeType.MONTHLY_RENT)
                 .deposit(500)
                 .monthlyRent(55)
                 .maintenanceFee(5)
+                .description("Quiet studio near campus.")
+                .tags(List.of("quiet", "campus"))
                 .build();
     }
 

@@ -77,23 +77,28 @@ public class Broker implements User {
     public void updateAdditionalInfo(
             BrokerOffice office,
             String registrationNo,
-            String phoneNumber,
-            String verificationDocumentFileName,
-            String verificationDocumentContentType,
-            byte[] verificationDocument
+            String phoneNumber
     ) {
         String normalizedRegistrationNo = normalize(registrationNo);
         String normalizedPhoneNumber = normalize(phoneNumber);
         if (!isPresent(normalizedRegistrationNo) || !isPresent(normalizedPhoneNumber)) {
             throw new IllegalArgumentException("Registration number and phone number are required.");
         }
-        if (verificationDocument == null || verificationDocument.length == 0) {
-            throw new IllegalArgumentException("Verification document is required.");
-        }
 
         this.office = office;
         this.registrationNo = normalizedRegistrationNo;
         this.phoneNumber = normalizedPhoneNumber;
+    }
+
+    public void updateVerificationDocument(
+            String verificationDocumentFileName,
+            String verificationDocumentContentType,
+            byte[] verificationDocument
+    ) {
+        if (verificationDocument == null || verificationDocument.length == 0) {
+            throw new IllegalArgumentException("Verification document is required.");
+        }
+
         this.verificationDocumentFileName = normalize(verificationDocumentFileName);
         this.verificationDocumentContentType = normalize(verificationDocumentContentType);
         this.verificationDocument = verificationDocument.clone();

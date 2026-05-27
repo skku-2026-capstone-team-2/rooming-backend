@@ -13,7 +13,8 @@ public enum INFRA_CATEGORY {
     BANK,
     GYM,
     KARAOKE,
-    PC_ROOM;
+    PC_ROOM,
+    ETC;
 
     public static Optional<INFRA_CATEGORY> fromMiddleBizName(String middleBizName) {
         if (middleBizName == null || middleBizName.isBlank()) {
@@ -68,6 +69,6 @@ public enum INFRA_CATEGORY {
                 || normalized.contains("internet cafe")) {
             return Optional.of(PC_ROOM);
         }
-        return Optional.empty();
+        return Optional.of(ETC);
     }
 }

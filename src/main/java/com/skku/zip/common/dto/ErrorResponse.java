@@ -1,11 +1,12 @@
 package com.skku.zip.common.dto;
 
+import java.time.LocalDateTime;
+
 public record ErrorResponse(
-        boolean success,
-        String errorCode,
-        String message
+        String message,
+        LocalDateTime time
 ) {
-    public static ErrorResponse of(String errorCode, String message) {
-        return new ErrorResponse(false, errorCode, message);
+    public static ErrorResponse of(String message) {
+        return new ErrorResponse(message, LocalDateTime.now());
     }
 }

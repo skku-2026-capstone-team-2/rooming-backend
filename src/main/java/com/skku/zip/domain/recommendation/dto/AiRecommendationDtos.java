@@ -12,8 +12,8 @@ public final class AiRecommendationDtos {
     public record Request(
             String query,
             List<String> preferences,
-            @JsonProperty("target_places")
-            List<Long> targetPlaces,
+            @JsonProperty("seeker_id")
+            Long seekerId,
             @JsonProperty("top_n")
             int topN
     ) {

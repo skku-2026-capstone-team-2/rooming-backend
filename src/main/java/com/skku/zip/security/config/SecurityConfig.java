@@ -1,6 +1,8 @@
 package com.skku.zip.security.config;
 
 import com.skku.zip.security.jwt.JwtAuthenticationFilter;
+import com.skku.zip.security.exception.RestAccessDeniedHandler;
+import com.skku.zip.security.exception.RestAuthenticationEntryPoint;
 import com.skku.zip.security.oauth.CustomOAuth2UserService;
 import com.skku.zip.security.oauth.OAuth2SuccessHandler;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +29,8 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
+    private final RestAccessDeniedHandler restAccessDeniedHandler;
 
     @Value("${app.frontend.allowed-origin:http://localhost:3000}")
     private String frontendAllowedOrigin;
@@ -39,6 +43,10 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(restAuthenticationEntryPoint)
+                        .accessDeniedHandler(restAccessDeniedHandler)
+                )
                 .oauth2Login(oauth2 -> oauth2
                         .userInfoEndpoint(userInfo -> userInfo
                                 .userService(customOAuth2UserService)

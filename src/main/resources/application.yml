@@ -51,7 +51,7 @@ odsay:
 
 rooming:
   ai:
-    base-url: ${ROOMING_AI_BASE_URL:http://localhost:8001}
+    base-url: ${ROOMING_AI_BASE_URL:43.202.209.198}
 
 springdoc:
   api-docs:

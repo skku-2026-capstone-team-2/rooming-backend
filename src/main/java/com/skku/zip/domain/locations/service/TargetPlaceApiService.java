@@ -2,10 +2,7 @@ package com.skku.zip.domain.locations.service;
 
 import com.skku.zip.common.exception.BadRequestException;
 import com.skku.zip.common.exception.NotFoundException;
-import com.skku.zip.domain.locations.client.TmapClient;
 import com.skku.zip.domain.locations.dto.CoordinateDto;
-import com.skku.zip.domain.locations.dto.PlaceSearchItem;
-import com.skku.zip.domain.locations.dto.TmapPlaceCandidate;
 import com.skku.zip.domain.locations.dto.TargetPlaceCreateRequest;
 import com.skku.zip.domain.locations.dto.TargetPlaceResponseItem;
 import com.skku.zip.domain.locations.dto.TargetPlaceUpdateRequest;
@@ -30,18 +27,6 @@ public class TargetPlaceApiService {
     private final TargetPlaceRepository targetPlaceRepository;
     private final SeekerRepository seekerRepository;
     private final TargetPlaceRouteService targetPlaceRouteService;
-    private final TmapClient tmapClient;
-
-    @Transactional(readOnly = true)
-    public List<PlaceSearchItem> searchPlaces(String keyword) {
-        if (keyword == null || keyword.isBlank()) {
-            throw new BadRequestException("keyword must not be blank.");
-        }
-
-        return tmapClient.searchPlaces(keyword).stream()
-                .map(this::toPlaceSearchItem)
-                .toList();
-    }
 
     @Transactional(readOnly = true)
     public List<TargetPlaceResponseItem> getTargetPlaces(Seeker seeker) {
@@ -159,14 +144,6 @@ public class TargetPlaceApiService {
                         location.latitude(),
                         location.longitude()
                 )));
-    }
-
-    private PlaceSearchItem toPlaceSearchItem(TmapPlaceCandidate candidate) {
-        return new PlaceSearchItem(
-                candidate.placeName(),
-                candidate.roadAddress(),
-                new CoordinateDto(candidate.latitude(), candidate.longitude())
-        );
     }
 
     private TargetPlaceResponseItem toResponse(RegisteredTargetPlace registeredTargetPlace) {

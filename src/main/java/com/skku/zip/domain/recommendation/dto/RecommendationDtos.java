@@ -2,6 +2,8 @@ package com.skku.zip.domain.recommendation.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.skku.zip.domain.locations.dto.CoordinateDto;
+import com.skku.zip.domain.locations.dto.RouteGeometryDetail;
+import com.skku.zip.domain.property.entity.TradeType;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -74,17 +76,67 @@ public final class RecommendationDtos {
 
     public record PropertyDetails(
             CoordinateDto location,
+            TradeType tradeType,
             Integer depositAmount,
             Integer monthlyRent,
-            Integer maintenanceFee
+            Integer maintenanceFee,
+            String description,
+            List<String> tags
     ) {
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
     public record TargetPlaceRoute(
             Long targetPlaceId,
             String transportMode,
             Integer durationMinutes,
-            Object routeJson
+            Integer transferCount,
+            List<RouteSubPathSummary> subPaths
+    ) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record RouteSubPathSummary(
+            String type,
+            Integer trafficType,
+            Integer time,
+            String startName,
+            String endName,
+            String lane,
+            Integer distance,
+            String description
+    ) {
+    }
+
+    public record RouteDetailData(
+            Long recommendationId,
+            Long propertyId,
+            Long targetPlaceId,
+            String transportMode,
+            Integer durationMinutes,
+            RouteGeometryDetail detail,
+            RoutePath path
+    ) {
+    }
+
+    public record RoutePath(
+            Integer totalTime,
+            Integer transferCount,
+            Integer totalPointCount,
+            List<RouteSubPathDetail> pathList
+    ) {
+    }
+
+    public record RouteSubPathDetail(
+            String type,
+            Integer trafficType,
+            Integer time,
+            String startName,
+            String endName,
+            String lane,
+            Integer distance,
+            String description,
+            List<CoordinateDto> points
     ) {
     }
 

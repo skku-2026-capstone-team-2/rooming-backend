@@ -48,4 +48,8 @@ dependencies {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	systemProperty(
+		"rooming.live-external-api",
+		System.getProperty("rooming.live-external-api", "false")
+	)
 }

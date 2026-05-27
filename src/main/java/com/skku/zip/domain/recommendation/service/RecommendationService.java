@@ -3,6 +3,7 @@ package com.skku.zip.domain.recommendation.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.skku.zip.common.exception.NotFoundException;
 import com.skku.zip.domain.locations.dto.CoordinateDto;
+import com.skku.zip.domain.locations.dto.RouteGeometryDetail;
 import com.skku.zip.domain.locations.entity.id.PropertyInfrastructureId;
 import com.skku.zip.domain.locations.entity.id.TargetPlacePropertyId;
 import com.skku.zip.domain.locations.entity.model.InfraAccessibility;
@@ -16,6 +17,7 @@ import com.skku.zip.domain.locations.entity.value.SubPath;
 import com.skku.zip.domain.locations.repository.InfraAccessibilityRepository;
 import com.skku.zip.domain.locations.repository.InfrastructureRepository;
 import com.skku.zip.domain.locations.repository.RouteRepository;
+import com.skku.zip.domain.locations.service.RouteGeometryService;
 import com.skku.zip.domain.property.entity.Property;
 import com.skku.zip.domain.property.repository.PropertyRepository;
 import com.skku.zip.domain.recommendation.client.AiRecommendationClient;
@@ -31,7 +33,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +48,7 @@ public class RecommendationService {
     private final SeekerRepository seekerRepository;
     private final PropertyRepository propertyRepository;
     private final RouteRepository routeRepository;
+    private final RouteGeometryService routeGeometryService;
     private final InfraAccessibilityRepository infraAccessibilityRepository;
     private final InfrastructureRepository infrastructureRepository;
     private final RecommendationRepository recommendationRepository;
@@ -57,7 +59,7 @@ public class RecommendationService {
         Seeker managedSeeker = findSeeker(seeker);
         List<RegisteredTargetPlace> targetPlaces = targetPlaces(managedSeeker);
         AiRecommendationDtos.Response aiResponse = aiRecommendationClient.recommend(
-                toAiRequest(request, targetPlaces)
+                toAiRequest(request, managedSeeker)
         );
 
         List<RecommendationDtos.Result> savedResults = List.of();
@@ -104,6 +106,18 @@ public class RecommendationService {
         Recommendation recommendation = findRecommendation(findSeeker(seeker), recommendationId);
         recommendation.markFavorite();
         return toResult(recommendation);
+    }
+
+    @Transactional(readOnly = true)
+    public RecommendationDtos.RouteDetailData getRecommendationRoute(
+            Seeker seeker,
+            Long recommendationId,
+            RouteGeometryDetail detail
+    ) {
+        Recommendation recommendation = findRecommendation(findSeeker(seeker), recommendationId);
+        Route route = findRoute(recommendation, snapshot(recommendation));
+        Path projectedPath = routeGeometryService.project(route.getRouteJson(), detail);
+        return toRouteDetailData(recommendation, route, detail, projectedPath);
     }
 
     @Transactional
@@ -153,16 +167,12 @@ public class RecommendationService {
 
     private AiRecommendationDtos.Request toAiRequest(
             RecommendationDtos.Request request,
-            List<RegisteredTargetPlace> targetPlaces
+            Seeker seeker
     ) {
         return new AiRecommendationDtos.Request(
                 request.normalizedQuery(),
                 request.normalizedPreferences(),
-                targetPlaces.stream()
-                        .map(RegisteredTargetPlace::getTargetPlace)
-                        .map(TargetPlace::getId)
-                        .filter(Objects::nonNull)
-                        .toList(),
+                seeker.getId(),
                 request.normalizedTopN()
         );
     }
@@ -214,21 +224,14 @@ public class RecommendationService {
     }
 
     private RecommendationDtos.Result toResult(Recommendation recommendation) {
-        RecommendationDtos.Result snapshot = objectMapper.convertValue(
-                recommendation.getSnapshotJson(),
-                RecommendationDtos.Result.class
-        );
+        RecommendationDtos.Result snapshot = snapshot(recommendation);
         List<Long> infrastructureIds = infrastructureIds(recommendation, snapshot);
         Property property = recommendation.getProperty();
         RecommendationDtos.PropertyDetails propertyDetails = snapshot.property() == null
                 ? propertyDetails(property)
                 : snapshot.property();
-        RecommendationDtos.TargetPlaceRoute firstTargetPlaceRoute = snapshot.firstTargetPlaceRoute() == null
-                ? firstTargetPlaceRoute(
-                        property,
-                        firstTargetPlaceId(targetPlaces(recommendation.getSeeker()))
-                )
-                : snapshot.firstTargetPlaceRoute();
+        RecommendationDtos.TargetPlaceRoute firstTargetPlaceRoute =
+                firstTargetPlaceRoute(recommendation, snapshot);
         List<RecommendationDtos.InfrastructureDetails> infrastructures = normalizedInfrastructures(
                 snapshot.infrastructures()
         );
@@ -269,9 +272,12 @@ public class RecommendationService {
     private RecommendationDtos.PropertyDetails propertyDetails(Property property) {
         return new RecommendationDtos.PropertyDetails(
                 coordinate(property),
+                property.getTradeType(),
                 property.getDeposit(),
                 property.getMonthlyRent(),
-                property.getMaintenanceFee()
+                property.getMaintenanceFee(),
+                property.getDescription(),
+                property.getTags() == null ? List.of() : property.getTags()
         );
     }
 
@@ -292,12 +298,26 @@ public class RecommendationService {
     }
 
     private RecommendationDtos.TargetPlaceRoute toTargetPlaceRoute(Route route) {
+        Path path = route.getRouteJson();
         return new RecommendationDtos.TargetPlaceRoute(
                 route.getId().getTargetPlaceId(),
                 route.getTransportMode().name(),
                 minutesValue(route.getDurationMinutes()),
-                routeJson(route.getRouteJson())
+                path == null ? 0 : path.getTransferCount(),
+                routeSubPathSummaries(path)
         );
+    }
+
+    private RecommendationDtos.TargetPlaceRoute firstTargetPlaceRoute(
+            Recommendation recommendation,
+            RecommendationDtos.Result snapshot
+    ) {
+        Long targetPlaceId = routeTargetPlaceId(recommendation, snapshot);
+        RecommendationDtos.TargetPlaceRoute currentRoute = firstTargetPlaceRoute(
+                recommendation.getProperty(),
+                targetPlaceId
+        );
+        return currentRoute == null ? snapshot.firstTargetPlaceRoute() : currentRoute;
     }
 
     private List<RecommendationDtos.InfrastructureDetails> infrastructures(Property property, List<Long> infraIds) {
@@ -390,45 +410,104 @@ public class RecommendationService {
                 : infrastructure.getAddress().getValue();
     }
 
-    private Object routeJson(Path path) {
+    private List<RecommendationDtos.RouteSubPathSummary> routeSubPathSummaries(Path path) {
+        if (path == null || path.getSubPaths() == null) {
+            return List.of();
+        }
+        return path.getSubPaths().stream()
+                .map(this::routeSubPathSummary)
+                .toList();
+    }
+
+    private RecommendationDtos.RouteSubPathSummary routeSubPathSummary(SubPath subPath) {
+        return new RecommendationDtos.RouteSubPathSummary(
+                trafficType(subPath.getTrafficType()),
+                subPath.getTrafficType(),
+                minutesValue(subPath.getSectionTime()),
+                subPath.getStartName(),
+                subPath.getEndName(),
+                subPath.getLaneName(),
+                subPath.getDistanceMeters(),
+                subPath.getDescription()
+        );
+    }
+
+    private RecommendationDtos.RouteDetailData toRouteDetailData(
+            Recommendation recommendation,
+            Route route,
+            RouteGeometryDetail detail,
+            Path path
+    ) {
+        return new RecommendationDtos.RouteDetailData(
+                recommendation.getId(),
+                route.getId().getPropertyId(),
+                route.getId().getTargetPlaceId(),
+                route.getTransportMode().name(),
+                minutesValue(route.getDurationMinutes()),
+                detail,
+                routePath(path)
+        );
+    }
+
+    private RecommendationDtos.RoutePath routePath(Path path) {
         if (path == null) {
-            return null;
+            return new RecommendationDtos.RoutePath(0, 0, 0, List.of());
         }
-
-        Map<String, Object> route = new LinkedHashMap<>();
-        route.put("totalTime", minutesValue(path.getTotalTime()));
-        route.put("transferCount", path.getTransferCount());
-        route.put("pathList", path.getSubPaths() == null
-                ? List.of()
-                : path.getSubPaths().stream()
-                        .map(this::subPathJson)
-                        .toList());
-        return route;
+        return new RecommendationDtos.RoutePath(
+                minutesValue(path.getTotalTime()),
+                path.getTransferCount(),
+                routeGeometryService.pointCount(path),
+                path.getSubPaths() == null
+                        ? List.of()
+                        : path.getSubPaths().stream()
+                        .map(this::routeSubPathDetail)
+                        .toList()
+        );
     }
 
-    private Map<String, Object> subPathJson(SubPath subPath) {
-        Map<String, Object> subPathJson = new LinkedHashMap<>();
-        subPathJson.put("type", trafficType(subPath.getTrafficType()));
-        subPathJson.put("trafficType", subPath.getTrafficType());
-        subPathJson.put("time", minutesValue(subPath.getSectionTime()));
-        putIfNotNull(subPathJson, "startName", subPath.getStartName());
-        putIfNotNull(subPathJson, "endName", subPath.getEndName());
-        putIfNotNull(subPathJson, "lane", subPath.getLaneName());
-        putIfNotNull(subPathJson, "distance", subPath.getDistanceMeters());
-        putIfNotNull(subPathJson, "description", subPath.getDescription());
-        if (subPath.getPoints() != null && !subPath.getPoints().isEmpty()) {
-            subPathJson.put("points", subPath.getPoints().stream()
-                    .map(this::routePointJson)
-                    .toList());
-        }
-        return subPathJson;
+    private RecommendationDtos.RouteSubPathDetail routeSubPathDetail(SubPath subPath) {
+        return new RecommendationDtos.RouteSubPathDetail(
+                trafficType(subPath.getTrafficType()),
+                subPath.getTrafficType(),
+                minutesValue(subPath.getSectionTime()),
+                subPath.getStartName(),
+                subPath.getEndName(),
+                subPath.getLaneName(),
+                subPath.getDistanceMeters(),
+                subPath.getDescription(),
+                subPath.getPoints() == null
+                        ? List.of()
+                        : subPath.getPoints().stream()
+                        .map(this::coordinate)
+                        .toList()
+        );
     }
 
-    private Map<String, Object> routePointJson(RoutePoint routePoint) {
-        Map<String, Object> point = new LinkedHashMap<>();
-        point.put("latitude", routePoint.getLatitude());
-        point.put("longitude", routePoint.getLongitude());
-        return point;
+    private CoordinateDto coordinate(RoutePoint routePoint) {
+        return new CoordinateDto(routePoint.getLatitude(), routePoint.getLongitude());
+    }
+
+    private Route findRoute(Recommendation recommendation, RecommendationDtos.Result snapshot) {
+        Long targetPlaceId = routeTargetPlaceId(recommendation, snapshot);
+        if (targetPlaceId == null) {
+            throw new NotFoundException("Recommendation route not found.");
+        }
+        return routeRepository.findById(new TargetPlacePropertyId(
+                        targetPlaceId,
+                        recommendation.getProperty().getPropertyId()
+                ))
+                .orElseThrow(() -> new NotFoundException("Recommendation route not found."));
+    }
+
+    private Long routeTargetPlaceId(Recommendation recommendation, RecommendationDtos.Result snapshot) {
+        if (snapshot.firstTargetPlaceRoute() != null && snapshot.firstTargetPlaceRoute().targetPlaceId() != null) {
+            return snapshot.firstTargetPlaceRoute().targetPlaceId();
+        }
+        return firstTargetPlaceId(targetPlaces(recommendation.getSeeker()));
+    }
+
+    private RecommendationDtos.Result snapshot(Recommendation recommendation) {
+        return objectMapper.convertValue(recommendation.getSnapshotJson(), RecommendationDtos.Result.class);
     }
 
     private int minutesValue(Minutes minutes) {
@@ -442,12 +521,6 @@ public class RecommendationService {
             case 3 -> "WALK";
             default -> "UNKNOWN";
         };
-    }
-
-    private void putIfNotNull(Map<String, Object> map, String key, Object value) {
-        if (value != null) {
-            map.put(key, value);
-        }
     }
 
     private String aiMessage(AiRecommendationDtos.Response response) {

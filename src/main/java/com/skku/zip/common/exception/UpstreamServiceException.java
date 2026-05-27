@@ -1,7 +1,9 @@
 package com.skku.zip.common.exception;
 
-public class UpstreamServiceException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+public class UpstreamServiceException extends BusinessException {
     public UpstreamServiceException(String message) {
-        super(message);
+        super(HttpStatus.BAD_GATEWAY, message);
     }
 }

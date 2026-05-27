@@ -11,8 +11,6 @@ tags:
     description: OAuth login entry points
   - name: Profile
     description: Authenticated user and broker profile APIs
-  - name: Places
-    description: Place search APIs
   - name: Target Places
     description: Seeker saved target-place APIs
   - name: Recommendation
@@ -21,8 +19,6 @@ tags:
     description: Property read APIs
   - name: Broker
     description: Broker property APIs
-  - name: Admin
-    description: Admin property APIs
 security:
   - bearerAuth: []
   - accessTokenCookie: []
@@ -75,7 +71,8 @@ paths:
           required: false
           schema:
             type: string
-            enum: [SEEKER, BROKER]
+          description: Optional view-model value. The OAuth success handler currently redirects with SEEKER or BROKER, but this controller does not validate the query value.
+          example: SEEKER
         - in: query
           name: profileComplete
           required: false
@@ -95,7 +92,7 @@ paths:
       summary: Get the current seeker profile
       responses:
         '200':
-          description: Seeker profile fetched.
+          description: User profile fetched.
           content:
             application/json:
               schema:
@@ -144,28 +141,80 @@ paths:
   /api/v1/user/broker/me/additional-info:
     put:
       tags: [Profile]
-      summary: Upload required broker information for manual verification
-      description: Multipart request. The additionalInfo part is JSON and the verificationDocument part is an image or PDF file.
+      summary: Save required broker information for manual verification
+      description: JSON request used before a broker can post properties. Send registrationNo, phoneNumber, and optional officeId in the request body. Upload the verification document separately at /api/v1/user/broker/me/verification-document. Developers/admins review registrationNo and the uploaded document manually, then set the broker's isVerified flag directly in the database.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrokerAdditionalInfoRequest'
+            example:
+              officeId: 4
+              registrationNo: 123-45-67890
+              phoneNumber: 010-1234-5678
+      responses:
+        '200':
+          description: Broker additional information updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerProfileResponse'
+              example:
+                success: true
+                data:
+                  brokerId: 12
+                  email: broker12@rooming.example
+                  name: Park Broker
+                  accountType: BROKER
+                  officeId: 4
+                  officeName: SKKU Gate Realty
+                  registrationNo: 123-45-67890
+                  officePhone: 031-299-1100
+                  officeAddress: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
+                  phoneNumber: 010-1234-5678
+                  hasVerificationDocument: false
+                  verificationDocumentFileName: null
+                  isVerified: false
+                  profileComplete: false
+                message: Broker additional information updated.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+
+  /api/v1/user/broker/me/verification-document:
+    put:
+      tags: [Profile]
+      summary: Upload broker verification document for manual verification
+      description: Multipart request for the broker registration document. This endpoint only receives the file. Send registrationNo and phoneNumber separately to /api/v1/user/broker/me/additional-info.
       requestBody:
         required: true
         content:
           multipart/form-data:
             schema:
               type: object
-              required: [additionalInfo, verificationDocument]
+              required: [verificationDocument]
               properties:
-                additionalInfo:
-                  $ref: '#/components/schemas/BrokerAdditionalInfoRequest'
                 verificationDocument:
                   type: string
                   format: binary
-                  description: Broker registration image or PDF used for manual verification.
-            encoding:
-              additionalInfo:
-                contentType: application/json
+                  description: Broker registration document file. Accepts image or PDF upload for manual verification.
+            example:
+              verificationDocument: broker-registration.pdf
       responses:
         '200':
-          description: Broker additional information updated.
+          description: Broker verification document updated.
           content:
             application/json:
               schema:
@@ -187,7 +236,7 @@ paths:
                   verificationDocumentFileName: broker-registration.pdf
                   isVerified: false
                   profileComplete: true
-                message: Broker additional information updated.
+                message: Broker verification document updated.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -196,8 +245,10 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
 
   /api/v1/broker-offices:
     get:
@@ -247,6 +298,7 @@ paths:
     post:
       tags: [Broker]
       summary: Create a property for a manually verified broker
+      description: tradeType is always MONTHLY_RENT or DEPOSIT_BASIS
       requestBody:
         required: true
         content:
@@ -254,23 +306,21 @@ paths:
             schema:
               $ref: '#/components/schemas/BrokerPropertyCreateRequest'
             example:
-              title: Quiet one-room near SKKU main gate
+              title: 캠퍼스빌 502호
               propertyType: one_room
-              transactionType: MONTHLY_RENT
-              depositAmount: 500
-              monthlyRent: 55
-              maintenanceFee: 5
-              areaM2: 23.5
-              floorInfo: 3F
+              tradeType: MONTHLY_RENT
+              depositAmount: 300
+              monthlyRent: 48
+              tags: [캠퍼스, 원룸]
+              areaM2: 18.0
+              floorInfo: 5층
               roomCount: 1
               bathroomCount: 1
-              direction: SOUTH
-              availableFrom: '2026-06-01'
-              description: Window faces a side street and the entry is keypad secured.
-              roadAddress: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
+              description: 캠퍼스 접근성이 좋은 원룸입니다.
+              roadAddress: 경기도 수원시 장안구 천천동 45-2
               location:
-                latitude: 37.29512
-                longitude: 126.97184
+                latitude: 37.2992
+                longitude: 126.9780
       responses:
         '201':
           description: Property saved.
@@ -278,37 +328,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/BrokerPropertyResponse'
+              example:
+                success: true
+                data:
+                  propertyId: 2
+                  title: 캠퍼스빌 502호
+                  propertyType: one_room
+                  roadAddress: 경기도 수원시 장안구 천천동 45-2
+                  location:
+                    latitude: 37.2992
+                    longitude: 126.978
+                  tradeType: MONTHLY_RENT
+                  depositAmount: 300
+                  monthlyRent: 48
+                  maintenanceFee: null
+                  areaM2: 18.0
+                  floorInfo: 5층
+                  description: 캠퍼스 접근성이 좋은 원룸입니다.
+                  tags: [캠퍼스, 원룸]
+                  hasProperty3D: false
+                message: Property saved.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
-  /api/v1/places/search:
-    get:
-      tags: [Places]
-      summary: Search places by keyword
-      parameters:
-        - in: query
-          name: keyword
-          required: true
-          schema:
-            type: string
-          example: Sungkyunkwan University
-      responses:
-        '200':
-          description: Place search completed.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlaceSearchResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/v1/users/me/target-places:
+  /api/v1/user/seeker/target-place:
     get:
       tags: [Target Places]
       summary: List the current seeker's target places
@@ -323,9 +372,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     post:
       tags: [Target Places]
       summary: Create a target place for the current seeker
+      description: category is always SCHOOL, WORK_PLACE, HOME, SUBWAY_STATION, BUS_TERMINAL or ETC
       requestBody:
         required: true
         content:
@@ -334,12 +386,12 @@ paths:
               $ref: '#/components/schemas/TargetPlaceCreateRequest'
             example:
               category: SCHOOL
-              placeName: Sungkyunkwan University Natural Sciences Campus
-              roadAddress: 2066 Seobu-ro, Jangan-gu, Suwon
+              placeName: 성균관대학교 자연과학캠퍼스
+              roadAddress: 경기도 수원시 장안구 서부로 2066
               location:
                 latitude: 37.29445
                 longitude: 126.97479
-              memo: First commute destination
+              memo: 주요 통학 목적지
       responses:
         '201':
           description: Target place saved.
@@ -347,6 +399,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TargetPlaceResponse'
+              example:
+                success: true
+                data:
+                  targetPlaceId: 1
+                  category: SCHOOL
+                  placeName: 성균관대학교 자연과학캠퍼스
+                  roadAddress: 경기도 수원시 장안구 서부로 2066
+                  location:
+                    latitude: 37.29445
+                    longitude: 126.97479
+                  memo: 주요 통학 목적지
+                message: Target place saved.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -356,7 +420,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /api/v1/users/me/target-places/{targetPlaceId}:
+  /api/v1/user/seeker/target-place/{targetPlaceId}:
     put:
       tags: [Target Places]
       summary: Update one target place for the current seeker
@@ -438,7 +502,7 @@ paths:
     post:
       tags: [Recommendation]
       summary: Get and save AI-based property recommendations
-      description: Frontend sends a recommendation query here. The backend calls the AI server with ids, saves the enriched recommendation snapshots, and returns frontend-ready results.
+      description: Frontend sends a recommendation query here. The backend calls the AI server with the current seeker's ID, saves the enriched recommendation snapshots, and returns frontend-ready results.
       requestBody:
         required: true
         content:
@@ -504,6 +568,35 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /api/v1/recommendations/{recommendationId}/route:
+    get:
+      tags: [Recommendation]
+      summary: Get map geometry for one saved recommendation route
+      description: Normal recommendation responses include route summaries only. Load this endpoint when the route map needs point geometry. SUMMARY returns simplified geometry with at most 100 points; DETAIL returns simplified geometry with at most 300 points.
+      parameters:
+        - $ref: '#/components/parameters/recommendationId'
+        - in: query
+          name: detail
+          required: false
+          description: Geometry density for the map zoom or screen state.
+          schema:
+            $ref: '#/components/schemas/RouteGeometryDetail'
+      responses:
+        '200':
+          description: Recommendation route fetched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationRouteDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/recommendations/{recommendationId}/favorite:
     post:
       tags: [Recommendation]
@@ -542,33 +635,35 @@ paths:
     get:
       tags: [Property]
       summary: List properties
-      description: This controller returns the raw JSON array from propertyService.getAll() rather than an ApiResponse wrapper.
       responses:
         '200':
           description: Property list fetched.
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Property'
+                $ref: '#/components/schemas/PropertyListResponse'
               example:
-                - propertyId: 101
-                  title: Campus-side one-room 3F
-                  address: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
-                  latitude: null
-                  longitude: null
-                  deposit: 500
-                  monthlyRent: 45
-                  areaM2: 20.5
-                  roomType: one_room
-                  floorInfo: 3F
-                  maintenanceFee: null
-                  description: null
-                  has3DModel: true
-                  splineUrl: https://prod.spline.design/example-room/scene.splinecode
-                  imageUrls:
-                    - /images/101_room_main.png
+                success: true
+                data:
+                  - propertyId: 101
+                    title: Campus-side one-room 3F
+                    address: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
+                    latitude: 37.29512
+                    longitude: 126.97184
+                    tradeType: MONTHLY_RENT
+                    deposit: 500
+                    monthlyRent: 45
+                    areaM2: 20.5
+                    roomType: one_room
+                    floorInfo: 3F
+                    maintenanceFee: null
+                    description: Campus-side one-room near SKKU.
+                    tags: [campus, one-room]
+                    has3DModel: true
+                    splineUrl: https://prod.spline.design/example-room/scene.splinecode
+                    imageUrls:
+                      - /images/101_room_main.png
+                message: Property list fetched.
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -587,6 +682,8 @@ paths:
                 $ref: '#/components/schemas/PropertyDetailResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/properties/{id}/images:
     get:
@@ -603,6 +700,8 @@ paths:
                 $ref: '#/components/schemas/PropertyImagesResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/properties/{id}/3d:
     get:
@@ -619,105 +718,8 @@ paths:
                 $ref: '#/components/schemas/Property3DResponseWrapper'
         '401':
           $ref: '#/components/responses/Unauthorized'
-
-  /api/v1/admin/properties:
-    post:
-      tags: [Admin]
-      summary: Create a property through the admin endpoint
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AdminCreatePropertyRequest'
-            example:
-              title: Campus-side one-room 3F
-              address: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
-              latitude: 37.29512
-              longitude: 126.97184
-              deposit: 500
-              monthlyRent: 55
-              maintenanceFee: 5
-              areaM2: 23.5
-              roomType: one_room
-              floorInfo: 3F
-              description: Admin seeded sample property.
-      responses:
-        '201':
-          description: Property created.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SimpleSuccessResponse'
-              example:
-                success: true
-                message: 留ㅻЪ ?깅줉 ?깃났
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/v1/admin/properties/{propertyId}:
-    patch:
-      tags: [Admin]
-      summary: Update a property through the admin endpoint
-      parameters:
-        - $ref: '#/components/parameters/propertyId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AdminUpdatePropertyRequest'
-            example:
-              monthlyRent: 53
-              maintenanceFee: 6
-              description: Rent adjusted after broker confirmation.
-      responses:
-        '200':
-          description: Property updated.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SimpleSuccessResponse'
-              example:
-                success: true
-                message: 留ㅻЪ ?섏젙 ?깃났
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-
-  /api/v1/admin/properties/{propertyId}/3d:
-    post:
-      tags: [Admin]
-      summary: Attach or update a 3D asset for a property
-      parameters:
-        - $ref: '#/components/parameters/propertyId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AdminProperty3DRequest'
-            example:
-              modelType: spline
-              modelUrl: https://prod.spline.design/example-room/scene.splinecode
-              previewImageUrl: https://cdn.rooming.test/properties/101/3d-preview.png
-      responses:
-        '201':
-          description: 3D asset saved.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SimpleSuccessResponse'
-              example:
-                success: true
-                message: 3D ?먯궛 ?깅줉 ?깃났
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
 components:
   securitySchemes:
@@ -773,6 +775,10 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     Unauthorized:
       description: Authentication is required.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     Forbidden:
       description: Authenticated account type is not allowed.
       content:
@@ -791,8 +797,32 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    MethodNotAllowed:
+      description: HTTP method is not supported for this path.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnsupportedMediaType:
+      description: Request content type is not supported.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PayloadTooLarge:
+      description: Uploaded file is too large.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     BadGateway:
       description: Upstream service failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    InternalServerError:
+      description: Unexpected server error.
       content:
         application/json:
           schema:
@@ -801,27 +831,29 @@ components:
   schemas:
     SimpleSuccessResponse:
       type: object
-      required: [success, message]
+      required: [success, data, message]
       properties:
         success:
           type: boolean
           example: true
+        data:
+          type: object
+          nullable: true
         message:
           type: string
 
     ErrorResponse:
       type: object
-      required: [success, errorCode, message]
+      description: Error bodies contain only the error message and the server-local creation time. HTTP status is returned as the response status code.
+      required: [message, time]
       properties:
-        success:
-          type: boolean
-          example: false
-        errorCode:
-          type: string
-          example: INVALID_REQUEST
         message:
           type: string
           example: Request body is invalid.
+        time:
+          type: string
+          format: date-time
+          example: '2026-05-22T10:15:30.123456'
 
     CoordinateDto:
       type: object
@@ -935,6 +967,7 @@ components:
           example: Park Broker
         accountType:
           type: string
+          description: Account type enum. Broker profile always returns BROKER.
           enum: [BROKER]
         officeId:
           type: integer
@@ -948,6 +981,7 @@ components:
         registrationNo:
           type: string
           nullable: true
+          description: Broker/business registration number submitted through additional-info.
           example: 123-45-67890
         officePhone:
           type: string
@@ -963,29 +997,39 @@ components:
           example: 010-1234-5678
         hasVerificationDocument:
           type: boolean
+          description: True when a verificationDocument file has been uploaded.
         verificationDocumentFileName:
           type: string
           nullable: true
+          description: Original uploaded verification document file name, if present.
           example: broker-registration.pdf
         isVerified:
           type: boolean
+          description: Manual verification status. Developers/admins set this in the database after checking registrationNo and verificationDocument.
         profileComplete:
           type: boolean
+          description: True when registrationNo, phoneNumber, and verificationDocument have all been submitted.
 
     BrokerAdditionalInfoRequest:
       type: object
+      description: JSON body for broker manual-verification information. Upload verificationDocument separately. After this information and the document are submitted, developers/admins inspect them and set isVerified in the database.
       required: [registrationNo, phoneNumber]
       properties:
         officeId:
           type: integer
           format: int64
           nullable: true
+          description: Existing broker office id selected from /api/v1/broker-offices. Null is allowed when the broker is not linked to a saved office.
           example: 12
         registrationNo:
           type: string
+          minLength: 1
+          description: Broker/business registration number used for manual verification.
           example: 123-45-67890
         phoneNumber:
           type: string
+          minLength: 1
+          description: Broker contact phone number.
           example: 010-1234-5678
       example:
         officeId: 4
@@ -998,12 +1042,15 @@ components:
       properties:
         officeName:
           type: string
+          minLength: 1
           example: Rooming Realty
         officePhone:
           type: string
+          minLength: 1
           example: 031-123-4567
         officeAddress:
           type: string
+          minLength: 1
           example: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
 
     BrokerOfficeResponse:
@@ -1082,26 +1129,39 @@ components:
 
     BrokerPropertyCreateRequest:
       type: object
-      required: [title, depositAmount, areaM2, roadAddress, location]
+      description: Request body for verified brokers to post a property. transactionType is not used; send tradeType. For DEPOSIT_BASIS, monthlyRent can be omitted or sent as 0 and the server stores/returns 0.
+      required: [title, tradeType, depositAmount, areaM2, roadAddress, location]
       properties:
         title:
           type: string
-          example: Studio near campus
+          minLength: 1
+          example: 캠퍼스빌 502호
         propertyType:
           type: string
           nullable: true
+          description: Free-form room/property type string used by the frontend, for example one_room.
           example: one_room
-        transactionType:
+        tradeType:
           type: string
-          nullable: true
+          description: Enum string. MONTHLY_RENT means monthly rent with depositAmount and monthlyRent. DEPOSIT_BASIS means deposit-basis rent; monthlyRent is stored and returned as 0.
+          enum: [MONTHLY_RENT, DEPOSIT_BASIS]
           example: MONTHLY_RENT
         depositAmount:
           type: integer
-          example: 500
+          description: Deposit amount. Unit follows the frontend/backend product convention.
+          example: 300
         monthlyRent:
           type: integer
           nullable: true
-          example: 55
+          description: Monthly rent amount for MONTHLY_RENT. For DEPOSIT_BASIS, omit it or send 0; the server returns 0.
+          example: 48
+        tags:
+          type: array
+          nullable: true
+          description: Free-form search/display tags.
+          items:
+            type: string
+          example: [캠퍼스, 원룸]
         maintenanceFee:
           type: integer
           nullable: true
@@ -1109,11 +1169,11 @@ components:
         areaM2:
           type: number
           format: double
-          example: 23.5
+          example: 18.0
         floorInfo:
           type: string
           nullable: true
-          example: 3F
+          example: 5층
         roomCount:
           type: integer
           nullable: true
@@ -1125,17 +1185,21 @@ components:
         direction:
           type: string
           nullable: true
+          description: Free-form orientation value from the frontend, for example SOUTH.
           example: SOUTH
         availableFrom:
           type: string
           nullable: true
+          description: Free-form available date string. Current backend stores no separate field for this value.
           example: 2026-06-01
         description:
           type: string
           nullable: true
+          example: 캠퍼스 접근성이 좋은 원룸입니다.
         roadAddress:
           type: string
-          example: 123 Suwon-ro, Jangan-gu, Suwon
+          minLength: 1
+          example: 경기도 수원시 장안구 천천동 45-2
         location:
           $ref: '#/components/schemas/CoordinateDto'
 
@@ -1154,25 +1218,27 @@ components:
       example:
         success: true
         data:
-          propertyId: 104
-          title: Quiet one-room near SKKU main gate
+          propertyId: 2
+          title: 캠퍼스빌 502호
           propertyType: one_room
-          roadAddress: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
+          roadAddress: 경기도 수원시 장안구 천천동 45-2
           location:
-            latitude: 37.29512
-            longitude: 126.97184
-          depositAmount: 500
-          monthlyRent: 55
-          maintenanceFee: 5
-          areaM2: 23.5
-          floorInfo: 3F
-          description: Window faces a side street and the entry is keypad secured.
+            latitude: 37.2992
+            longitude: 126.978
+          tradeType: MONTHLY_RENT
+          depositAmount: 300
+          monthlyRent: 48
+          maintenanceFee: null
+          areaM2: 18.0
+          floorInfo: 5층
+          description: 캠퍼스 접근성이 좋은 원룸입니다.
+          tags: [캠퍼스, 원룸]
           hasProperty3D: false
         message: Property saved.
 
     BrokerPropertyData:
       type: object
-      required: [propertyId, title, roadAddress, location, depositAmount]
+      required: [propertyId, title, roadAddress, location, tradeType, depositAmount, areaM2, hasProperty3D]
       properties:
         propertyId:
           type: integer
@@ -1187,6 +1253,10 @@ components:
           type: string
         location:
           $ref: '#/components/schemas/CoordinateDto'
+        tradeType:
+          type: string
+          description: Enum string. MONTHLY_RENT means monthly rent; DEPOSIT_BASIS means deposit-basis rent with monthlyRent normalized to 0.
+          enum: [MONTHLY_RENT, DEPOSIT_BASIS]
         depositAmount:
           type: integer
         monthlyRent:
@@ -1198,95 +1268,54 @@ components:
         areaM2:
           type: number
           format: double
-          nullable: true
         floorInfo:
           type: string
           nullable: true
         description:
           type: string
           nullable: true
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
         hasProperty3D:
           type: boolean
 
-    PlaceSearchResponse:
-      type: object
-      required: [success, data, message]
-      properties:
-        success:
-          type: boolean
-          example: true
-        data:
-          $ref: '#/components/schemas/PlaceSearchData'
-        message:
-          type: string
-          example: Place search completed.
-      example:
-        success: true
-        data:
-          places:
-            - placeName: Sungkyunkwan University Natural Sciences Campus
-              roadAddress: 2066 Seobu-ro, Jangan-gu, Suwon
-              location:
-                latitude: 37.29445
-                longitude: 126.97479
-            - placeName: SKKU Station Gate 1
-              roadAddress: 2149 Seobu-ro, Jangan-gu, Suwon
-              location:
-                latitude: 37.30031
-                longitude: 126.97072
-        message: Place search completed.
-
-    PlaceSearchData:
-      type: object
-      required: [places]
-      properties:
-        places:
-          type: array
-          items:
-            $ref: '#/components/schemas/PlaceSearchItem'
-
-    PlaceSearchItem:
-      type: object
-      required: [placeName, roadAddress, location]
-      properties:
-        placeName:
-          type: string
-          example: Sungkyunkwan University Natural Sciences Campus
-        roadAddress:
-          type: string
-          nullable: true
-          example: 2066 Seobu-ro, Jangan-gu, Suwon
-        location:
-          $ref: '#/components/schemas/CoordinateDto'
-
     TargetPlaceCreateRequest:
       type: object
-      description: category is the canonical request field. The controller DTO also accepts placeType as a JSON alias for category.
+      description: category is the canonical enum request field. The controller DTO also accepts placeType as a JSON alias for category.
       required: [placeName, roadAddress, location]
       anyOf:
         - required: [category]
         - required: [placeType]
       properties:
         category:
-          $ref: '#/components/schemas/PlaceCategory'
+          description: Enum string describing the purpose of the saved place.
+          allOf:
+            - $ref: '#/components/schemas/PlaceCategory'
         placeType:
-          description: Input alias accepted by JsonAlias("placeType").
+          description: Input alias accepted by JsonAlias("placeType"). Prefer category in new frontend code.
           allOf:
             - $ref: '#/components/schemas/PlaceCategory'
         placeName:
           type: string
-          example: Campus main gate
+          minLength: 1
+          example: 성균관대학교 자연과학캠퍼스
         roadAddress:
           type: string
-          example: 2066 Seobu-ro, Jangan-gu, Suwon
+          minLength: 1
+          maxLength: 255
+          example: 경기도 수원시 장안구 서부로 2066
         location:
           $ref: '#/components/schemas/CoordinateDto'
         memo:
           type: string
           nullable: true
+          example: 주요 통학 목적지
     TargetPlaceUpdateRequest:
       type: object
-      description: All fields are optional for PUT in the current DTO. placeType is accepted as an input alias for category.
+      description: All fields are optional for PUT in the current DTO. category is an enum string; placeType is accepted as an input alias for category.
       properties:
         category:
           $ref: '#/components/schemas/PlaceCategory'
@@ -1299,6 +1328,8 @@ components:
           nullable: true
         roadAddress:
           type: string
+          minLength: 1
+          maxLength: 255
           nullable: true
         location:
           nullable: true
@@ -1315,12 +1346,7 @@ components:
           type: boolean
           example: true
         data:
-          type: object
-          properties:
-            targetPlaces:
-              type: array
-              items:
-                $ref: '#/components/schemas/TargetPlaceResponseItem'
+          $ref: '#/components/schemas/TargetPlaceListData'
         message:
           type: string
           example: Target place list fetched.
@@ -1361,15 +1387,24 @@ components:
       example:
         success: true
         data:
-          targetPlaceId: 29
+          targetPlaceId: 1
           category: SCHOOL
-          placeName: Sungkyunkwan University Natural Sciences Campus
-          roadAddress: 2066 Seobu-ro, Jangan-gu, Suwon
+          placeName: 성균관대학교 자연과학캠퍼스
+          roadAddress: 경기도 수원시 장안구 서부로 2066
           location:
             latitude: 37.29445
             longitude: 126.97479
-          memo: First commute destination
+          memo: 주요 통학 목적지
         message: Target place saved.
+
+    TargetPlaceListData:
+      type: object
+      required: [targetPlaces]
+      properties:
+        targetPlaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetPlaceResponseItem'
 
     TargetPlaceResponseItem:
       type: object
@@ -1392,6 +1427,7 @@ components:
           nullable: true
     PlaceCategory:
       type: string
+      description: Enum string for a seeker target place category. SCHOOL is school/campus, WORK_PLACE is workplace, HOME is home, SUBWAY_STATION is subway station, BUS_TERMINAL is bus terminal, ETC is other.
       enum: [SCHOOL, WORK_PLACE, HOME, SUBWAY_STATION, BUS_TERMINAL, ETC]
 
     RecommendationRequest:
@@ -1400,6 +1436,7 @@ components:
       properties:
         query:
           type: string
+          minLength: 1
           example: Find a quiet studio near campus with easy subway access.
         preferences:
           type: array
@@ -1439,42 +1476,31 @@ components:
                 location:
                   latitude: 37.2945
                   longitude: 126.9748
+                tradeType: MONTHLY_RENT
                 depositAmount: 500
                 monthlyRent: 55
                 maintenanceFee: 5
+                description: Quiet studio near campus.
+                tags: [quiet, campus]
               firstTargetPlaceRoute:
                 targetPlaceId: 29
                 transportMode: PUBLIC_TRANSPORT
                 durationMinutes: 18
-                routeJson:
-                  totalTime: 18
-                  transferCount: 1
-                  pathList:
-                    - type: WALK
-                      trafficType: 3
-                      time: 4
-                      startName: Sungkyunkwan University
-                      endName: SKKU gate bus stop
-                      distance: 250
-                      points:
-                        - latitude: 37.2945
-                          longitude: 126.9748
-                        - latitude: 37.295
-                          longitude: 126.9739
-                    - type: BUS
-                      trafficType: 2
-                      time: 14
-                      startName: SKKU gate bus stop
-                      endName: Property stop
-                      lane: 62-1
-                      distance: 1570
-                      points:
-                        - latitude: 37.295
-                          longitude: 126.9739
-                        - latitude: 37.2959
-                          longitude: 126.973
-                        - latitude: 37.2961
-                          longitude: 126.9718
+                transferCount: 1
+                subPaths:
+                  - type: WALK
+                    trafficType: 3
+                    time: 4
+                    startName: Sungkyunkwan University
+                    endName: SKKU gate bus stop
+                    distance: 250
+                  - type: BUS
+                    trafficType: 2
+                    time: 14
+                    startName: SKKU gate bus stop
+                    endName: Property stop
+                    lane: 62-1
+                    distance: 1570
               infrastructures:
                 - infrastructureId: 10
                   name: Campus Pharmacy
@@ -1526,17 +1552,18 @@ components:
                 location:
                   latitude: 37.2945
                   longitude: 126.9748
+                tradeType: MONTHLY_RENT
                 depositAmount: 500
                 monthlyRent: 55
                 maintenanceFee: 5
+                description: Quiet studio near campus.
+                tags: [quiet, campus]
               firstTargetPlaceRoute:
                 targetPlaceId: 29
                 transportMode: PUBLIC_TRANSPORT
                 durationMinutes: 18
-                routeJson:
-                  totalTime: 18
-                  transferCount: 1
-                  pathList: []
+                transferCount: 1
+                subPaths: []
               infrastructures:
                 - infrastructureId: 10
                   name: Campus Pharmacy
@@ -1572,9 +1599,12 @@ components:
                 location:
                   latitude: 37.2945
                   longitude: 126.9748
+                tradeType: MONTHLY_RENT
                 depositAmount: 500
                 monthlyRent: 55
                 maintenanceFee: 5
+                description: Quiet studio near campus.
+                tags: [quiet, campus]
               firstTargetPlaceRoute: null
               infrastructures: []
               explanation: Quiet property with short commute and nearby daily services.
@@ -1592,6 +1622,59 @@ components:
         message:
           type: string
           example: Recommendation marked as favorite.
+
+    RecommendationRouteDetailResponse:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/RecommendationRouteDetailData'
+        message:
+          type: string
+          example: Recommendation route fetched.
+      example:
+        success: true
+        data:
+          recommendationId: 7001
+          propertyId: 101
+          targetPlaceId: 29
+          transportMode: PUBLIC_TRANSPORT
+          durationMinutes: 18
+          detail: DETAIL
+          path:
+            totalTime: 18
+            transferCount: 1
+            totalPointCount: 5
+            pathList:
+              - type: WALK
+                trafficType: 3
+                time: 4
+                startName: Sungkyunkwan University
+                endName: SKKU gate bus stop
+                distance: 250
+                points:
+                  - latitude: 37.2945
+                    longitude: 126.9748
+                  - latitude: 37.295
+                    longitude: 126.9739
+              - type: BUS
+                trafficType: 2
+                time: 14
+                startName: SKKU gate bus stop
+                endName: Property stop
+                lane: 62-1
+                distance: 1570
+                points:
+                  - latitude: 37.295
+                    longitude: 126.9739
+                  - latitude: 37.2959
+                    longitude: 126.973
+                  - latitude: 37.2961
+                    longitude: 126.9718
+        message: Recommendation route fetched.
 
     RecommendationData:
       type: object
@@ -1655,16 +1738,22 @@ components:
             $ref: '#/components/schemas/RecommendationInfrastructureDetails'
         explanation:
           type: string
+          nullable: true
           example: Quiet studio with a short route to the requested places.
 
     RecommendationPropertyDetails:
       type: object
-      required: [location, depositAmount, monthlyRent, maintenanceFee]
+      required: [location, tradeType, depositAmount, monthlyRent, maintenanceFee]
       properties:
         location:
           nullable: true
           allOf:
             - $ref: '#/components/schemas/CoordinateDto'
+        tradeType:
+          type: string
+          description: Enum string. MONTHLY_RENT means monthly rent with deposit and monthly rent values. DEPOSIT_BASIS means deposit-basis rent and monthlyRent is 0.
+          enum: [MONTHLY_RENT, DEPOSIT_BASIS]
+          example: MONTHLY_RENT
         depositAmount:
           type: integer
           nullable: true
@@ -1677,10 +1766,21 @@ components:
           type: integer
           nullable: true
           example: 5
+        description:
+          type: string
+          nullable: true
+          example: Quiet studio near campus.
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+          example: [quiet, campus]
 
     RecommendationTargetPlaceRoute:
       type: object
-      required: [targetPlaceId, transportMode, durationMinutes, routeJson]
+      description: Summary route data for recommendation cards and lists. Point geometry is loaded from the recommendation route endpoint only when a map view needs it.
+      required: [targetPlaceId, transportMode, durationMinutes, transferCount, subPaths]
       properties:
         targetPlaceId:
           type: integer
@@ -1688,15 +1788,18 @@ components:
           example: 29
         transportMode:
           type: string
+          description: Enum string. PUBLIC_TRANSPORT routes come from ODSAY. WALK routes come from TMAP pedestrian routing for close destinations.
           enum: [PUBLIC_TRANSPORT, WALK]
         durationMinutes:
           type: integer
           example: 18
-        routeJson:
-          description: Route steps and route points for drawing the route from the first target place to the property.
-          nullable: true
-          allOf:
-            - $ref: '#/components/schemas/RecommendationRouteJson'
+        transferCount:
+          type: integer
+          example: 1
+        subPaths:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecommendationRouteSubPathSummary'
 
     RecommendationInfrastructureDetails:
       type: object
@@ -1713,7 +1816,8 @@ components:
         category:
           type: string
           nullable: true
-          enum: [CONVENIENT_STORE, MART, PHARMACY, HOSPITAL, LAUNDRY, CAFE, SUBWAY, BANK, GYM, KARAOKE, PC_ROOM]
+          description: Infrastructure category enum string returned from the backend.
+          enum: [CONVENIENT_STORE, MART, PHARMACY, HOSPITAL, LAUNDRY, CAFE, SUBWAY, BANK, GYM, KARAOKE, PC_ROOM, ETC]
         roadAddress:
           type: string
           nullable: true
@@ -1727,9 +1831,72 @@ components:
           nullable: true
           example: 4
 
-    RecommendationRouteJson:
+    RecommendationRouteSubPathSummary:
       type: object
-      required: [totalTime, transferCount, pathList]
+      properties:
+        type:
+          type: string
+          description: Route subpath type derived from provider traffic type.
+          enum: [SUBWAY, BUS, WALK, UNKNOWN]
+        trafficType:
+          type: integer
+          example: 3
+        time:
+          type: integer
+          example: 6
+        startName:
+          type: string
+          nullable: true
+        endName:
+          type: string
+          nullable: true
+        lane:
+          type: string
+          nullable: true
+        distance:
+          type: integer
+          nullable: true
+        description:
+          type: string
+          nullable: true
+
+    RecommendationRouteDetailData:
+      type: object
+      required: [recommendationId, propertyId, targetPlaceId, transportMode, durationMinutes, detail, path]
+      properties:
+        recommendationId:
+          type: integer
+          format: int64
+          example: 7001
+        propertyId:
+          type: integer
+          format: int64
+          example: 101
+        targetPlaceId:
+          type: integer
+          format: int64
+          example: 29
+        transportMode:
+          type: string
+          description: Enum string. PUBLIC_TRANSPORT routes come from ODSAY. WALK routes come from TMAP pedestrian routing.
+          enum: [PUBLIC_TRANSPORT, WALK]
+        durationMinutes:
+          type: integer
+          example: 18
+        detail:
+          $ref: '#/components/schemas/RouteGeometryDetail'
+        path:
+          $ref: '#/components/schemas/RecommendationRoutePath'
+
+    RouteGeometryDetail:
+      type: string
+      description: SUMMARY is simplified for list or overview maps and caps the route at 100 points. DETAIL is simplified for detailed maps and caps the route at 300 points.
+      enum: [SUMMARY, DETAIL]
+      default: SUMMARY
+
+    RecommendationRoutePath:
+      type: object
+      required: [totalTime, transferCount, totalPointCount, pathList]
       properties:
         totalTime:
           type: integer
@@ -1737,16 +1904,22 @@ components:
         transferCount:
           type: integer
           example: 1
+        totalPointCount:
+          type: integer
+          description: Total number of returned geometry points after simplification and point-budget limiting.
+          maximum: 300
+          example: 120
         pathList:
           type: array
           items:
-            $ref: '#/components/schemas/RecommendationRouteSubPath'
+            $ref: '#/components/schemas/RecommendationRouteSubPathDetail'
 
-    RecommendationRouteSubPath:
+    RecommendationRouteSubPathDetail:
       type: object
       properties:
         type:
           type: string
+          description: Route subpath type derived from provider traffic type.
           enum: [SUBWAY, BUS, WALK, UNKNOWN]
         trafficType:
           type: integer
@@ -1770,7 +1943,7 @@ components:
           type: string
           nullable: true
         points:
-          description: Points to draw this route step. TMAP walking routes use pedestrian route points. ODSAY bus/subway steps prefer ODSAY route-graphic points and fall back to pass-stop or subpath endpoint points.
+          description: Simplified geometry points for this route step. All steps together stay within the point cap selected by the detail query.
           type: array
           items:
             $ref: '#/components/schemas/CoordinateDto'
@@ -1784,9 +1957,11 @@ components:
           example: 101
         title:
           type: string
+          minLength: 1
           example: Campus-side one-room 3F
         address:
           type: string
+          minLength: 1
           example: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
         latitude:
           type: number
@@ -1798,6 +1973,12 @@ components:
           format: double
           nullable: true
           example: 126.97184
+        tradeType:
+          type: string
+          nullable: true
+          description: Enum string. MONTHLY_RENT means monthly rent. DEPOSIT_BASIS means deposit-basis rent and monthlyRent is 0.
+          enum: [MONTHLY_RENT, DEPOSIT_BASIS]
+          example: MONTHLY_RENT
         deposit:
           type: integer
           nullable: true
@@ -1827,6 +2008,12 @@ components:
           type: string
           nullable: true
           example: Admin seeded sample property.
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+          example: [quiet, campus]
         has3DModel:
           type: boolean
           nullable: true
@@ -1842,6 +2029,21 @@ components:
             type: string
           example: [/images/101_room_main.png, /images/101_room_bath.png]
 
+    PropertyListResponse:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Property'
+        message:
+          type: string
+          example: Property list fetched.
+
     PropertyDetailResponse:
       type: object
       required: [success, data, message]
@@ -1853,20 +2055,24 @@ components:
           $ref: '#/components/schemas/PropertyDetail'
         message:
           type: string
-          example: 留ㅻЪ ?곸꽭 議고쉶 ?깃났
+          example: Property detail fetched.
       example:
         success: true
         data:
           propertyId: 101
           title: Campus-side one-room 3F
           address: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
+          tradeType: MONTHLY_RENT
           deposit: 500
           monthlyRent: 45
           areaM2: 20.5
           roomType: one_room
           floorInfo: 3F
+          maintenanceFee: null
+          description: 성대 정문에서 도보 이동이 편한 원룸입니다.
+          tags: [성대, 도보, 원룸]
           has3DModel: true
-        message: 留ㅻЪ ?곸꽭 議고쉶 ?깃났
+        message: Property detail fetched.
 
     PropertyDetail:
       type: object
@@ -1882,6 +2088,11 @@ components:
         address:
           type: string
           example: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
+        tradeType:
+          type: string
+          nullable: true
+          description: Enum string. MONTHLY_RENT means monthly rent. DEPOSIT_BASIS means deposit-basis rent and monthlyRent is 0.
+          enum: [MONTHLY_RENT, DEPOSIT_BASIS]
         deposit:
           type: integer
           nullable: true
@@ -1898,6 +2109,17 @@ components:
         floorInfo:
           type: string
           nullable: true
+        maintenanceFee:
+          type: integer
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
         has3DModel:
           type: boolean
           nullable: true
@@ -1911,6 +2133,7 @@ components:
           example: true
         data:
           type: object
+          required: [propertyId, images]
           properties:
             propertyId:
               type: integer
@@ -1921,7 +2144,7 @@ components:
                 $ref: '#/components/schemas/PropertyImage'
         message:
           type: string
-          example: "留ㅻЪ ?대?吏\u0080 議고쉶 ?깃났"
+          example: Property images fetched.
       example:
         success: true
         data:
@@ -1933,7 +2156,7 @@ components:
             - imageId: 2
               imageUrl: /images/103_room_bath.png
               imageOrder: 2
-        message: "留ㅻЪ ?대?吏\u0080 議고쉶 ?깃났"
+        message: Property images fetched.
 
     PropertyImage:
       type: object
@@ -1957,7 +2180,7 @@ components:
           $ref: '#/components/schemas/Property3DResponse'
         message:
           type: string
-          example: 3D 紐⑤뜽 議고쉶 ?깃났
+          example: 3D model fetched.
       example:
         success: true
         data:
@@ -1966,7 +2189,7 @@ components:
           modelType: spline
           modelUrl: https://prod.spline.design/example-room/scene.splinecode
           previewImageUrl: null
-        message: 3D 紐⑤뜽 議고쉶 ?깃났
+        message: 3D model fetched.
 
     Property3DResponse:
       type: object
@@ -1983,96 +2206,6 @@ components:
         modelUrl:
           type: string
           nullable: true
-        previewImageUrl:
-          type: string
-          nullable: true
-
-    AdminCreatePropertyRequest:
-      type: object
-      required: [title, address, latitude, longitude, deposit, monthlyRent]
-      properties:
-        title:
-          type: string
-          example: Campus-side one-room 3F
-        address:
-          type: string
-          example: 25 Seobu-ro 2126beon-gil, Jangan-gu, Suwon
-        latitude:
-          type: number
-          format: double
-          example: 37.29512
-        longitude:
-          type: number
-          format: double
-          example: 126.97184
-        deposit:
-          type: integer
-          example: 500
-        monthlyRent:
-          type: integer
-          example: 55
-        maintenanceFee:
-          type: integer
-          nullable: true
-        areaM2:
-          type: number
-          format: float
-          nullable: true
-        roomType:
-          type: string
-          nullable: true
-        floorInfo:
-          type: string
-          nullable: true
-        description:
-          type: string
-          nullable: true
-
-    AdminUpdatePropertyRequest:
-      type: object
-      properties:
-        title:
-          type: string
-          nullable: true
-        address:
-          type: string
-          nullable: true
-        deposit:
-          type: integer
-          nullable: true
-        monthlyRent:
-          type: integer
-          nullable: true
-          example: 53
-        maintenanceFee:
-          type: integer
-          nullable: true
-          example: 6
-        areaM2:
-          type: number
-          format: float
-          nullable: true
-        roomType:
-          type: string
-          nullable: true
-        floorInfo:
-          type: string
-          nullable: true
-        description:
-          type: string
-          nullable: true
-          example: Rent adjusted after broker confirmation.
-
-    AdminProperty3DRequest:
-      type: object
-      required: [modelType, modelUrl]
-      properties:
-        modelType:
-          type: string
-          example: spline
-        modelUrl:
-          type: string
-          example: https://prod.spline.design/example/scene.splinecode
         previewImageUrl:
           type: string
           nullable: true
