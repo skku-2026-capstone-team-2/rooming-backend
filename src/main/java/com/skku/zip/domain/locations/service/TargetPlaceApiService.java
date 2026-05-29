@@ -14,14 +14,18 @@ import com.skku.zip.domain.seeker.entity.Seeker;
 import com.skku.zip.domain.seeker.entity.RegisteredTargetPlace;
 import com.skku.zip.domain.seeker.repository.SeekerRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.Comparator;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class TargetPlaceApiService {
 
     private final TargetPlaceRepository targetPlaceRepository;
@@ -50,7 +54,7 @@ public class TargetPlaceApiService {
                 targetPlace,
                 request.memo()
         );
-        targetPlaceRouteService.storeMissingRoutesToPropertiesWithinFiveKilometers(targetPlace);
+        storeMissingRoutesAfterCommit(targetPlace);
 
         return toResponse(registeredTargetPlace);
     }
@@ -58,7 +62,7 @@ public class TargetPlaceApiService {
     @Transactional
     public TargetPlaceResponseItem updateTargetPlace(Seeker seeker, Long targetPlaceId, TargetPlaceUpdateRequest request) {
         Seeker managedSeeker = findSeeker(seeker);
-        RegisteredTargetPlace currentTargetPlace = requireCurrentTargetPlace(managedSeeker, targetPlaceId);
+        RegisteredTargetPlace currentTargetPlace = requireTargetPlaceAssociation(managedSeeker, targetPlaceId);
         TargetPlace currentPlace = currentTargetPlace.getTargetPlace();
 
         PLACE_CATEGORY category = request.category() == null
@@ -89,7 +93,7 @@ public class TargetPlaceApiService {
                 targetPlace,
                 memo
         );
-        targetPlaceRouteService.storeMissingRoutesToPropertiesWithinFiveKilometers(targetPlace);
+        storeMissingRoutesAfterCommit(targetPlace);
 
         return toResponse(registeredTargetPlace);
     }
@@ -107,10 +111,6 @@ public class TargetPlaceApiService {
         }
         return seekerRepository.findById(seeker.getId())
                 .orElseThrow(() -> new NotFoundException("Seeker not found."));
-    }
-
-    private RegisteredTargetPlace requireCurrentTargetPlace(Seeker seeker, Long targetPlaceId) {
-        return requireTargetPlaceAssociation(seeker, targetPlaceId);
     }
 
     private RegisteredTargetPlace requireTargetPlaceAssociation(Seeker seeker, Long targetPlaceId) {
@@ -144,6 +144,35 @@ public class TargetPlaceApiService {
                         location.latitude(),
                         location.longitude()
                 )));
+    }
+
+    private void storeMissingRoutesAfterCommit(TargetPlace targetPlace) {
+        if (targetPlace == null || targetPlace.getId() == null) {
+            return;
+        }
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            storeMissingRoutes(targetPlace);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                storeMissingRoutes(targetPlace);
+            }
+        });
+    }
+
+    private void storeMissingRoutes(TargetPlace targetPlace) {
+        try {
+            targetPlaceRouteService.storeMissingRoutesToPropertiesWithinFiveKilometers(targetPlace);
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Failed during target-place route precomputation for targetPlaceId={}: {}",
+                    targetPlace.getId(),
+                    e.getMessage()
+            );
+        }
     }
 
     private TargetPlaceResponseItem toResponse(RegisteredTargetPlace registeredTargetPlace) {
