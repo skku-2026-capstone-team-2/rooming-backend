@@ -57,7 +57,9 @@ class TmapClientContractTest {
                 """;
 
         server.expect(ExpectedCount.times(INFRA_CATEGORY.values().length - 1), request -> {
-                    assertThat(request.getURI().getQuery()).doesNotContain("categories=null");
+                    assertThat(request.getURI().getQuery())
+                            .contains("count=2")
+                            .doesNotContain("categories=null");
                 })
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("appKey", API_KEY))

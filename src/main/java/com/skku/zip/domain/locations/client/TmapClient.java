@@ -26,7 +26,7 @@ import java.util.Optional;
 @Slf4j
 public class TmapClient {
 
-    private static final int MAX_POI_COUNT = 200;
+    private static final int MAX_POIS_PER_INFRA_CATEGORY = 2;
     private static final int WALK_TRAFFIC_TYPE = 3;
     private static final int SECONDS_PER_MINUTE = 60;
     private static final double WALKING_METERS_PER_MINUTE = 67.0;
@@ -276,7 +276,7 @@ public class TmapClient {
                             longitude,
                             latitude,
                             radiusKm,
-                            MAX_POI_COUNT,
+                            MAX_POIS_PER_INFRA_CATEGORY,
                             categories)
                     .accept(MediaType.APPLICATION_JSON)
                     .header("appKey", apiKey)
@@ -308,6 +308,10 @@ public class TmapClient {
     }
 
     private Optional<TmapInfrastructureCandidate> toInfrastructureCandidate(INFRA_CATEGORY fallbackCategory, JsonNode poi) {
+        if (fallbackCategory == INFRA_CATEGORY.ETC) {
+            return Optional.empty();
+        }
+
         String name = text(poi, "name");
         Optional<Double> latitude = firstDouble(poi, "frontLat", "noorLat", "centerLat");
         Optional<Double> longitude = firstDouble(poi, "frontLon", "noorLon", "centerLon");
@@ -322,6 +326,7 @@ public class TmapClient {
                 jibunAddressText(poi)
         );
         INFRA_CATEGORY category = INFRA_CATEGORY.fromMiddleBizName(text(poi, "middleBizName"))
+                .filter(candidateCategory -> candidateCategory != INFRA_CATEGORY.ETC)
                 .orElse(fallbackCategory);
 
         return Optional.of(new TmapInfrastructureCandidate(

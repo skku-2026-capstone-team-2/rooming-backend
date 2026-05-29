@@ -18,10 +18,16 @@ import java.sql.Timestamp;
 @Entity
 @Table(
         name = "infrastructures",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_infrastructures_address",
-                columnNames = "address"
-        )
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_infrastructures_address",
+                        columnNames = "address"
+                ),
+                @UniqueConstraint(
+                        name = "uk_infrastructures_location",
+                        columnNames = "location"
+                )
+        }
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)

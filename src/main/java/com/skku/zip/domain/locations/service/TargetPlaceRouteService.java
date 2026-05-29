@@ -53,7 +53,6 @@ public class TargetPlaceRouteService {
         }
 
         List<Property> nearbyProperties = nearbyPropertyQueryRepository.findWithinFiveKilometers(targetPlace);
-        log.info("Found {} nearby properties for targetPlaceId={}", nearbyProperties.size(), targetPlace.getId());
 
         List<Route> routes = nearbyProperties.stream()
                 .filter(property -> property.getPropertyId() != null)
@@ -66,13 +65,10 @@ public class TargetPlaceRouteService {
                 .toList();
 
         if (routes.isEmpty()) {
-            log.info("No route rows to store for targetPlaceId={}", targetPlace.getId());
             return List.of();
         }
 
-        List<Route> saved = routeRepository.saveAllAndFlush(routes);
-        log.info("Stored {} route rows for targetPlaceId={}", saved.size(), targetPlace.getId());
-        return saved;
+        return routeRepository.saveAllAndFlush(routes);
     }
 
     private Optional<Route> buildRoute(TargetPlace targetPlace, Property property) {
@@ -82,14 +78,6 @@ public class TargetPlaceRouteService {
         double endLongitude = property.getLongitude();
         double distanceKm = distanceKm(startLatitude, startLongitude, endLatitude, endLongitude);
         boolean closeWalkingDistance = distanceKm <= CLOSE_WALKING_ROUTE_THRESHOLD_KM;
-
-        log.info(
-                "Building route targetPlaceId={}, propertyId={}, distanceKm={}, mode={}",
-                targetPlace.getId(),
-                property.getPropertyId(),
-                String.format("%.3f", distanceKm),
-                closeWalkingDistance ? "TMAP_WALK" : "ODSAY_TRANSIT"
-        );
 
         if (closeWalkingDistance) {
             Optional<OdsayRouteCandidate> candidate = tmapClient.findWalkingRoute(

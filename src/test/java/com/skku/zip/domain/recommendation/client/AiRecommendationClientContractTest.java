@@ -34,7 +34,7 @@ class AiRecommendationClientContractTest {
     void setUp() {
         RestClient.Builder restClientBuilder = RestClient.builder();
         server = MockRestServiceServer.bindTo(restClientBuilder).build();
-        aiRecommendationClient = new AiRecommendationClient(restClientBuilder);
+        aiRecommendationClient = new AiRecommendationClient(restClientBuilder.build());
         ReflectionTestUtils.setField(aiRecommendationClient, "baseUrl", BASE_URL);
     }
 
@@ -95,6 +95,32 @@ class AiRecommendationClientContractTest {
         assertThat(response.results().getFirst().infraIds()).containsExactly(10L, 11L, 16L);
         assertThat(response.results().getFirst().explanation())
                 .isEqualTo("Quiet studio with a short target-place route.");
+    }
+
+    @Test
+    void recommendationAcceptsBaseUrlWithoutScheme() {
+        ReflectionTestUtils.setField(aiRecommendationClient, "baseUrl", "ai.example.test");
+        AiRecommendationDtos.Request request = new AiRecommendationDtos.Request(
+                "Find a quiet studio near campus.",
+                List.of("quiet"),
+                7L,
+                1
+        );
+        String aiResponseJson = """
+                {
+                  "success": true,
+                  "message": "Recommendation completed.",
+                  "results": []
+                }
+                """;
+
+        server.expect(requestTo("http://ai.example.test:8000/recommend"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess(aiResponseJson, MediaType.APPLICATION_JSON));
+
+        AiRecommendationDtos.Response response = aiRecommendationClient.recommend(request);
+
+        assertThat(response.success()).isTrue();
     }
 
     private RequestMatcher printRequest(String label) {

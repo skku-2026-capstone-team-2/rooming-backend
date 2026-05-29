@@ -154,7 +154,7 @@ public class RecommendationService {
                 .orElseThrow(() -> new NotFoundException("Seeker not found."));
     }
 
-    private Recommendation findRecommendation(Seeker seeker, Long recommendationId) {
+    private Recommendation  findRecommendation(Seeker seeker, Long recommendationId) {
         return recommendationRepository.findByIdAndSeeker(recommendationId, seeker)
                 .orElseThrow(() -> new NotFoundException("Recommendation not found."));
     }
