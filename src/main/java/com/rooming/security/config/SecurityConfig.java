@@ -33,7 +33,7 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final RestAccessDeniedHandler restAccessDeniedHandler;
 
-    @Value("${app.frontend.allowed-origins:https://rooming-frontend.vercel.app,http://localhost:5173}")
+    @Value("${app.frontend.allowed-origins:https://rooming-frontend.vercel.app,https://rooming.cloud,http://localhost:5173}")
     private String frontendAllowedOrigins;
 
     @Bean

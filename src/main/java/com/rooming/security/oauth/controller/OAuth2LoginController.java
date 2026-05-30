@@ -22,10 +22,10 @@ public class OAuth2LoginController {
     @Value("${app.auth.oauth-account-type-cookie-name:ROOMING_OAUTH_ACCOUNT_TYPE}")
     private String accountTypeCookieName;
 
-    @Value("${app.auth.cookie-secure:false}")
+    @Value("${app.auth.cookie-secure:true}")
     private boolean cookieSecure;
 
-    @Value("${app.auth.cookie-same-site:Lax}")
+    @Value("${app.auth.cookie-same-site:None}")
     private String cookieSameSite;
 
     @GetMapping("/seeker/google")
