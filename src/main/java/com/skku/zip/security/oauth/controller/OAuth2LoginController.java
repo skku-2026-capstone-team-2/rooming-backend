@@ -25,6 +25,9 @@ public class OAuth2LoginController {
     @Value("${app.auth.cookie-secure:false}")
     private boolean cookieSecure;
 
+    @Value("${app.auth.cookie-same-site:Lax}")
+    private String cookieSameSite;
+
     @GetMapping("/seeker/google")
     public ResponseEntity<Void> loginSeekerWithGoogle() {
         return redirectToGoogle(AccountType.SEEKER);
@@ -40,7 +43,7 @@ public class OAuth2LoginController {
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .path("/")
-                .sameSite("Lax")
+                .sameSite(cookieSameSite)
                 .maxAge(Duration.ofMinutes(5))
                 .build();
 

@@ -59,33 +59,6 @@ paths:
                 type: string
               example: ROOMING_OAUTH_ACCOUNT_TYPE=BROKER; Path=/; HttpOnly; SameSite=Lax
 
-  /oauth2/redirect:
-    get:
-      tags: [Auth]
-      summary: Render the local OAuth success redirect view
-      description: View controller used by the configured OAuth success redirect URI.
-      security: []
-      parameters:
-        - in: query
-          name: accountType
-          required: false
-          schema:
-            type: string
-          description: Optional view-model value. The OAuth success handler currently redirects with SEEKER or BROKER, but this controller does not validate the query value.
-          example: SEEKER
-        - in: query
-          name: profileComplete
-          required: false
-          schema:
-            type: boolean
-      responses:
-        '200':
-          description: OAuth redirect page rendered.
-          content:
-            text/html:
-              schema:
-                type: string
-
   /api/v1/user/seeker/me:
     get:
       tags: [Profile]
