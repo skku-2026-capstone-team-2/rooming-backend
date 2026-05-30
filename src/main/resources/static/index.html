@@ -35,7 +35,7 @@
 
 <script>
     async function loadRoom(name) {
-        const res = await fetch(`http://localhost:8080/properties/${name}/3d`);
+        const res = await fetch(`/api/v1/properties/${name}/3d`);
         if (!res.ok) { alert('매물을 찾을 수 없어요'); return; }
 
         const result = await res.json();

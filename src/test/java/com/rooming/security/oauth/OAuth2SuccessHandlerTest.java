@@ -53,4 +53,36 @@ class OAuth2SuccessHandlerTest {
                         .contains("SameSite=None")
                         .contains("Secure"));
     }
+
+    @Test
+    void canRedirectAccessTokenInFragmentWhenConfigured() throws Exception {
+        JwtProvider jwtProvider = mock(JwtProvider.class);
+        when(jwtProvider.createAccessToken(any())).thenReturn("access-token");
+        when(jwtProvider.getAccessTokenValidityInSeconds()).thenReturn(86_400L);
+        OAuth2SuccessHandler successHandler = new OAuth2SuccessHandler(jwtProvider);
+        ReflectionTestUtils.setField(successHandler, "frontendRedirectUri", "https://rooming-frontend.vercel.app/");
+        ReflectionTestUtils.setField(successHandler, "accessTokenCookieName", "ROOMING_ACCESS_TOKEN");
+        ReflectionTestUtils.setField(successHandler, "accountTypeCookieName", "ROOMING_OAUTH_ACCOUNT_TYPE");
+        ReflectionTestUtils.setField(successHandler, "cookieSecure", true);
+        ReflectionTestUtils.setField(successHandler, "cookieSameSite", "None");
+        ReflectionTestUtils.setField(successHandler, "redirectAccessToken", true);
+
+        Seeker seeker = Seeker.builder()
+                .name("Seeker")
+                .email("seeker@example.test")
+                .provider("google")
+                .loginId("google_seeker")
+                .build();
+        PrincipalDetails principalDetails = new PrincipalDetails(seeker, Map.of("name", seeker.getName()));
+
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        successHandler.onAuthenticationSuccess(
+                new MockHttpServletRequest(),
+                response,
+                new TestingAuthenticationToken(principalDetails, null, principalDetails.getAuthorities())
+        );
+
+        assertThat(response.getRedirectedUrl())
+                .isEqualTo("https://rooming-frontend.vercel.app/#accountType=SEEKER&profileComplete=true&accessToken=access-token");
+    }
 }

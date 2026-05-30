@@ -19,6 +19,8 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
@@ -35,11 +37,14 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     @Value("${app.auth.oauth-account-type-cookie-name:ROOMING_OAUTH_ACCOUNT_TYPE}")
     private String accountTypeCookieName;
 
-    @Value("${app.auth.cookie-secure:false}")
+    @Value("${app.auth.cookie-secure:true}")
     private boolean cookieSecure;
 
-    @Value("${app.auth.cookie-same-site:Lax}")
+    @Value("${app.auth.cookie-same-site:None}")
     private String cookieSameSite;
+
+    @Value("${app.auth.redirect-access-token:false}")
+    private boolean redirectAccessToken;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -52,9 +57,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie(accessToken).toString());
         response.addHeader(HttpHeaders.SET_COOKIE, clearAccountTypeCookie().toString());
 
-        String targetUrl = frontendRedirectUri
-                + "?accountType=" + encode(user.getAccountType().name())
-                + "&profileComplete=" + isProfileComplete(user);
+        String targetUrl = buildTargetUrl(user, accessToken);
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
     }
@@ -84,6 +87,36 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
             return broker.isProfileComplete();
         }
         return true;
+    }
+
+    private String buildTargetUrl(User user, String accessToken) {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("accountType", user.getAccountType().name());
+        params.put("profileComplete", String.valueOf(isProfileComplete(user)));
+
+        if (redirectAccessToken) {
+            params.put("accessToken", accessToken);
+            return appendFragmentParams(frontendRedirectUri, params);
+        }
+
+        return appendQueryParams(frontendRedirectUri, params);
+    }
+
+    private String appendQueryParams(String url, Map<String, String> params) {
+        String separator = url.contains("?") ? "&" : "?";
+        return url + separator + encodeParams(params);
+    }
+
+    private String appendFragmentParams(String url, Map<String, String> params) {
+        String separator = url.contains("#") ? "&" : "#";
+        return url + separator + encodeParams(params);
+    }
+
+    private String encodeParams(Map<String, String> params) {
+        return params.entrySet().stream()
+                .map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+                .reduce((left, right) -> left + "&" + right)
+                .orElse("");
     }
 
     private String encode(String value) {

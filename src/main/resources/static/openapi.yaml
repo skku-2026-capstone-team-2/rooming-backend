@@ -4,6 +4,8 @@ info:
   version: 0.2.0
   description: Current HTTP surface exposed by the Spring controllers in this repository. Every path below is the literal controller URL path, including /api/v1 where the controller maps it.
 servers:
+  - url: https://rooming.cloud
+    description: Production HTTPS backend
   - url: http://localhost:8080
     description: Local Spring application root
 tags:
@@ -39,7 +41,7 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-              example: ROOMING_OAUTH_ACCOUNT_TYPE=SEEKER; Path=/; HttpOnly; SameSite=Lax
+              example: ROOMING_OAUTH_ACCOUNT_TYPE=SEEKER; Path=/; HttpOnly; Secure; SameSite=None
 
   /api/v1/auth/broker/google:
     get:
@@ -57,7 +59,7 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-              example: ROOMING_OAUTH_ACCOUNT_TYPE=BROKER; Path=/; HttpOnly; SameSite=Lax
+              example: ROOMING_OAUTH_ACCOUNT_TYPE=BROKER; Path=/; HttpOnly; Secure; SameSite=None
 
   /api/v1/user/seeker/me:
     get:

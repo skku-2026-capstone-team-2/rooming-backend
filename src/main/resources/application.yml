@@ -35,12 +35,13 @@ jwt:
 app:
   frontend:
     redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:https://rooming-frontend.vercel.app/}
-    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app}},http://localhost:5173
+    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app}},https://rooming.cloud,http://localhost:5173
   auth:
     access-token-cookie-name: ROOMING_ACCESS_TOKEN
     oauth-account-type-cookie-name: ROOMING_OAUTH_ACCOUNT_TYPE
-    cookie-secure: ${AUTH_COOKIE_SECURE:false}
-    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
+    cookie-secure: ${AUTH_COOKIE_SECURE:true}
+    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:None}
+    redirect-access-token: ${OAUTH2_REDIRECT_ACCESS_TOKEN:false}
 
 tmap:
   api-key: ${TMAP_API_KEY}
