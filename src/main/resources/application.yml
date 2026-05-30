@@ -5,18 +5,18 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
   datasource:
-    url: jdbc:postgresql://localhost:5432/rooming_db
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:rooming_db}}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${JPA_DDL_AUTO:update}
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-        show_sql: true
+        format_sql: ${HIBERNATE_FORMAT_SQL:false}
+        show_sql: ${HIBERNATE_SHOW_SQL:false}
     database-platform: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
   security:
     oauth2:
@@ -34,12 +34,13 @@ jwt:
 
 app:
   frontend:
-    redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:8080/oauth2/redirect}
-    allowed-origin: ${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app/}
+    redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:https://rooming-frontend.vercel.app/}
+    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app}},http://localhost:5173
   auth:
     access-token-cookie-name: ROOMING_ACCESS_TOKEN
     oauth-account-type-cookie-name: ROOMING_OAUTH_ACCOUNT_TYPE
     cookie-secure: ${AUTH_COOKIE_SECURE:false}
+    cookie-same-site: ${AUTH_COOKIE_SAME_SITE:Lax}
 
 tmap:
   api-key: ${TMAP_API_KEY}
@@ -62,6 +63,7 @@ springdoc:
     url: /openapi.yaml
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: ${SERVER_FORWARD_HEADERS_STRATEGY:framework}
 
 kind: Application

@@ -26,7 +26,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     private final JwtProvider jwtProvider;
 
-    @Value("${app.frontend.redirect-uri:http://localhost:8080/oauth2/redirect}")
+    @Value("${app.frontend.redirect-uri:https://rooming-frontend.vercel.app/}")
     private String frontendRedirectUri;
 
     @Value("${app.auth.access-token-cookie-name:ROOMING_ACCESS_TOKEN}")
@@ -37,6 +37,9 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     @Value("${app.auth.cookie-secure:false}")
     private boolean cookieSecure;
+
+    @Value("${app.auth.cookie-same-site:Lax}")
+    private String cookieSameSite;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
@@ -61,7 +64,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .path("/")
-                .sameSite("Lax")
+                .sameSite(cookieSameSite)
                 .maxAge(Duration.ofSeconds(jwtProvider.getAccessTokenValidityInSeconds()))
                 .build();
     }
@@ -71,7 +74,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                 .httpOnly(true)
                 .secure(cookieSecure)
                 .path("/")
-                .sameSite("Lax")
+                .sameSite(cookieSameSite)
                 .maxAge(Duration.ZERO)
                 .build();
     }
