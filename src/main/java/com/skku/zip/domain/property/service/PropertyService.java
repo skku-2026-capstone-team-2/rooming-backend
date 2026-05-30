@@ -7,6 +7,7 @@ import com.skku.zip.domain.property.dto.Property3DResponse;
 import com.skku.zip.domain.property.dto.PropertyDetailResponse;
 import com.skku.zip.domain.property.dto.PropertyImageResponse;
 import com.skku.zip.domain.property.entity.Property;
+import com.skku.zip.domain.property.entity.TradeType;
 import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +30,8 @@ public class PropertyService {
                     .has3DModel(true)
                     .splineUrl("https://prod.spline.design/ufDr-JPaF1n5x4ZL/scene.splinecode")
                     .imageUrls(List.of("//images/101_room_main.png"))
+                    .tradeType(TradeType.MONTHLY_RENT)
+                    .tags(List.of("풀옵션", "도보5분", "신축"))
                     .build(),
             Property.builder()
                     .propertyId(102L)
@@ -39,17 +42,21 @@ public class PropertyService {
                     .has3DModel(true)
                     .splineUrl("https://prod.spline.design/G9XY7eM4s61H1qA8/scene.splinecode")
                     .imageUrls(List.of())
+                    .tradeType(TradeType.MONTHLY_RENT)
+                    .tags(List.of("주차가능", "엘리베이터"))
                     .build(),
             Property.builder()
                     .propertyId(103L)
                     .title("성대 쪽문 신축 풀옵션 '율전스테이'")
                     .address("경기도 수원시 장안구 율전동 290-11")
                     .deposit(1000).monthlyRent(60)
-                    .areaM2(22.5f).roomType("one_room_split") // 분리형 원룸
+                    .areaM2(22.5f).roomType("one_room_split")
                     .floorInfo("2층")
                     .has3DModel(true)
-                    .splineUrl("https://prod.spline.design/t7nMhC63hlht2v4b/scene.splinecode") // 새로운 모델 URL
+                    .splineUrl("https://prod.spline.design/t7nMhC63hlht2v4b/scene.splinecode")
                     .imageUrls(List.of("/images/103_room_main.png", "/images/103_room_bath.png"))
+                    .tradeType(TradeType.MONTHLY_RENT)
+                    .tags(List.of("신축", "분리형", "풀옵션", "쪽문근처"))
                     .build()
     ));
 
@@ -73,6 +80,9 @@ public class PropertyService {
                 .roomType(p.getRoomType())
                 .floorInfo(p.getFloorInfo())
                 .has3DModel(p.getHas3DModel())
+                .tradeType(p.getTradeType())
+                .tags(p.getTags())
+                .description(p.getDescription())
                 .build();
     }
 
@@ -95,7 +105,7 @@ public class PropertyService {
                 .has3DModel(p.getHas3DModel())
                 .modelType("spline")
                 .modelUrl(p.getSplineUrl())
-                .previewImageUrl(null) // 나중에 추가
+                .previewImageUrl(null)
                 .build();
     }
 
@@ -117,6 +127,8 @@ public class PropertyService {
                 .floorInfo(request.getFloorInfo())
                 .maintenanceFee(request.getMaintenanceFee())
                 .description(request.getDescription())
+                .tradeType(request.getTradeType())
+                .tags(request.getTags() != null ? new ArrayList<>(request.getTags()) : new ArrayList<>())
                 .has3DModel(false)
                 .imageUrls(new ArrayList<>())
                 .build();
