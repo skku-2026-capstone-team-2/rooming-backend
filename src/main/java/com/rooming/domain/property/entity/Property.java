@@ -9,8 +9,6 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.util.List;
 
@@ -44,9 +42,8 @@ public class Property {
     @JsonIgnore
     @ToString.Exclude
     @EqualsAndHashCode.Exclude
-    @JdbcTypeCode(SqlTypes.VECTOR)
-    @Column(columnDefinition = "vector")
-    private float[] embedding;
+    @Column(columnDefinition = "vector", insertable = false, updatable = false)
+    private String embedding;
 
     private Boolean has3DModel;
     private String splineUrl;
