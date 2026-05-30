@@ -1,0 +1,10 @@
+package com.skku.zip.domain.locations.entity.type;
+
+public enum PLACE_CATEGORY {
+    SCHOOL,
+    WORK_PLACE,
+    HOME,
+    SUBWAY_STATION,
+    BUS_TERMINAL,
+    ETC
+}
