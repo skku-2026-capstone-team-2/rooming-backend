@@ -29,6 +29,15 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 	implementation("org.springframework.boot:spring-boot-starter-web")
 	implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0")
+	implementation ("org.springframework.boot:spring-boot-starter-security")
+	implementation ("org.springframework.boot:spring-boot-starter-oauth2-client")
+	implementation ("io.jsonwebtoken:jjwt-api:0.11.5")
+	implementation ("org.springframework.boot:spring-boot-starter-thymeleaf")
+	runtimeOnly ("io.jsonwebtoken:jjwt-impl:0.11.5")
+	runtimeOnly ("io.jsonwebtoken:jjwt-jackson:0.11.5")
+	runtimeOnly ("org.postgresql:postgresql")
+	compileOnly ("org.projectlombok:lombok")
+	implementation("org.hibernate.orm:hibernate-spatial")
 	compileOnly("org.projectlombok:lombok")
 	runtimeOnly("org.postgresql:postgresql")
 	annotationProcessor("org.projectlombok:lombok")
@@ -39,4 +48,8 @@ dependencies {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	systemProperty(
+		"rooming.live-external-api",
+		System.getProperty("rooming.live-external-api", "false")
+	)
 }

@@ -1,9 +1,58 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
   autoconfigure:
     exclude:
-      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
-      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+  datasource:
+    url: jdbc:postgresql://localhost:5432/rooming_db
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        show_sql: true
+    database-platform: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - profile
+              - email
+jwt:
+  secret: ${SECRET_HASH_KEY}
+  access-token-validity-in-seconds: 86400
+
+app:
+  frontend:
+    redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:http://localhost:8080/oauth2/redirect}
+    allowed-origin: ${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app/}
+  auth:
+    access-token-cookie-name: ROOMING_ACCESS_TOKEN
+    oauth-account-type-cookie-name: ROOMING_OAUTH_ACCOUNT_TYPE
+    cookie-secure: ${AUTH_COOKIE_SECURE:false}
+
+tmap:
+  api-key: ${TMAP_API_KEY}
+  base-url: https://apis.openapi.sk.com/tmap
+
+odsay:
+  api-key: ${ODSAY_API_KEY}
+  base-url: https://api.odsay.com/v1/api
+
+rooming:
+  ai:
+    base-url: ${ROOMING_AI_BASE_URL:http://43.202.209.198:8000}
+
 springdoc:
   api-docs:
     path: /api-docs
@@ -14,3 +63,5 @@ springdoc:
 
 server:
   port: 8080
+
+kind: Application
