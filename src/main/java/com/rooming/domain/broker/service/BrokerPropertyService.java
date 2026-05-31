@@ -54,7 +54,8 @@ public class BrokerPropertyService {
                 .floorInfo(request.floorInfo())
                 .description(request.description())
                 .tags(request.tags() == null ? new ArrayList<>() : request.tags())
-                .has3DModel(false)
+                .has3DModel(request.splineUrl() != null)
+                .splineUrl(request.splineUrl())
                 .imageUrls(new ArrayList<>())
                 .build();
 
@@ -97,7 +98,8 @@ public class BrokerPropertyService {
                 property.getFloorInfo(),
                 property.getDescription(),
                 property.getTags() == null ? List.of() : property.getTags(),
-                property.getHas3DModel()
+                property.getHas3DModel(),
+                property.getSplineUrl()
         );
     }
 }
