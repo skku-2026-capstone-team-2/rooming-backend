@@ -19,7 +19,8 @@ public record BrokerPropertyData(
         String floorInfo,
         String description,
         List<String> tags,
-        Boolean hasProperty3D
+        Boolean hasProperty3D,
+        String splineUrl
 ) {
     public BrokerPropertyData {
         if (tradeType == TradeType.DEPOSIT_BASIS) {

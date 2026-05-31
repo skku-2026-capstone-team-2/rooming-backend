@@ -48,6 +48,8 @@ public record BrokerPropertyCreateRequest(
 
         @Valid
         @NotNull
-        CoordinateDto location
+        CoordinateDto location,
+
+        String splineUrl
 ) {
 }
