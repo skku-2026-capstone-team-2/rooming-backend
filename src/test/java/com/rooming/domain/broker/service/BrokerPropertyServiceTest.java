@@ -108,7 +108,8 @@ class BrokerPropertyServiceTest {
                 "2026-06-01",
                 "Near campus",
                 "123 Suwon-ro",
-                new CoordinateDto(37.2945, 126.9748)
+                new CoordinateDto(37.2945, 126.9748),
+                null
         );
     }
 }
