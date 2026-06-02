@@ -292,6 +292,7 @@ paths:
               roomCount: 1
               bathroomCount: 1
               description: 캠퍼스 접근성이 좋은 원룸입니다.
+              splineUrl: https://prod.spline.design/example-room/scene.splinecode
               roadAddress: 경기도 수원시 장안구 천천동 45-2
               location:
                 latitude: 37.2992
@@ -321,7 +322,8 @@ paths:
                   floorInfo: 5층
                   description: 캠퍼스 접근성이 좋은 원룸입니다.
                   tags: [캠퍼스, 원룸]
-                  hasProperty3D: false
+                  hasProperty3D: true
+                  splineUrl: https://prod.spline.design/example-room/scene.splinecode
                 message: Property saved.
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -677,6 +679,82 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '500':
           $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Property]
+      summary: Upload property images
+      description: Authenticated broker owner uploads image files. The server stores the files in image storage and returns image URLs; current backend uses dummy storage URLs until S3 is configured.
+      parameters:
+        - $ref: '#/components/parameters/propertyReadId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [images]
+              properties:
+                images:
+                  type: array
+                  description: One or more property image files.
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Property images saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyImagesResponse'
+              example:
+                success: true
+                data:
+                  propertyId: 103
+                  images:
+                    - imageId: 1
+                      imageUrl: https://dummy-storage.rooming.local/properties/103/images/example-main.png
+                      imageOrder: 1
+                    - imageId: 2
+                      imageUrl: https://dummy-storage.rooming.local/properties/103/images/example-bath.png
+                      imageOrder: 2
+                message: Property images saved.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/v1/properties/{id}/images/{imageId}:
+    delete:
+      tags: [Property]
+      summary: Delete one property image
+      description: imageId is the current 1-based image order returned by the property images API.
+      parameters:
+        - $ref: '#/components/parameters/propertyReadId'
+        - $ref: '#/components/parameters/propertyImageId'
+      responses:
+        '200':
+          description: Property image deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PropertyImagesResponse'
+              example:
+                success: true
+                data:
+                  propertyId: 103
+                  images:
+                    - imageId: 1
+                      imageUrl: /images/103_room_bath.png
+                      imageOrder: 1
+                message: Property image deleted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
 
   /api/v1/properties/{id}/3d:
     get:
@@ -716,6 +794,15 @@ components:
         type: integer
         format: int64
       example: 101
+    propertyImageId:
+      in: path
+      name: imageId
+      required: true
+      description: Current 1-based image id/order from the property images response.
+      schema:
+        type: integer
+        minimum: 1
+      example: 2
     propertyId:
       in: path
       name: propertyId
@@ -1171,6 +1258,10 @@ components:
           type: string
           nullable: true
           example: 캠퍼스 접근성이 좋은 원룸입니다.
+        splineUrl:
+          type: string
+          nullable: true
+          example: https://prod.spline.design/example-room/scene.splinecode
         roadAddress:
           type: string
           minLength: 1
@@ -1208,7 +1299,8 @@ components:
           floorInfo: 5층
           description: 캠퍼스 접근성이 좋은 원룸입니다.
           tags: [캠퍼스, 원룸]
-          hasProperty3D: false
+          hasProperty3D: true
+          splineUrl: https://prod.spline.design/example-room/scene.splinecode
         message: Property saved.
 
     BrokerPropertyData:
@@ -1256,6 +1348,9 @@ components:
             type: string
         hasProperty3D:
           type: boolean
+        splineUrl:
+          type: string
+          nullable: true
 
     TargetPlaceCreateRequest:
       type: object
