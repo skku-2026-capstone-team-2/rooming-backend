@@ -3,6 +3,7 @@ package com.rooming.domain.broker.service;
 import com.rooming.common.exception.ForbiddenException;
 import com.rooming.domain.broker.dto.BrokerPropertyCreateRequest;
 import com.rooming.domain.broker.dto.BrokerPropertyData;
+import com.rooming.domain.broker.dto.BrokerPropertySummaryData;
 import com.rooming.domain.broker.entity.Broker;
 import com.rooming.domain.broker.repository.BrokerPropertyRepository;
 import com.rooming.domain.broker.repository.BrokerRepository;
@@ -35,6 +36,24 @@ class BrokerPropertyServiceTest {
             brokerRepository,
             propertyInfrastructureService
     );
+
+    @Test
+    void getMyPropertySummariesReturnsOnlyPropertyIdsAndTitles() {
+        Broker broker = verifiedBroker();
+        when(brokerPropertyRepository.findSummariesByBrokerId(7L))
+                .thenReturn(List.of(
+                        new BrokerPropertySummaryData(12L, "New property"),
+                        new BrokerPropertySummaryData(9L, "Older property")
+                ));
+
+        List<BrokerPropertySummaryData> data = brokerPropertyService.getMyPropertySummaries(broker);
+
+        assertThat(data).extracting(BrokerPropertySummaryData::propertyId)
+                .containsExactly(12L, 9L);
+        assertThat(data.get(0).title()).isEqualTo("New property");
+        verify(brokerPropertyRepository).findSummariesByBrokerId(7L);
+        verifyNoInteractions(brokerRepository, propertyInfrastructureService);
+    }
 
     @Test
     void unverifiedBrokerCannotCreateProperty() {

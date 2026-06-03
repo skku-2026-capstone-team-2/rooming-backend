@@ -4,6 +4,7 @@ import com.rooming.common.exception.ForbiddenException;
 import com.rooming.common.exception.NotFoundException;
 import com.rooming.domain.broker.dto.BrokerPropertyCreateRequest;
 import com.rooming.domain.broker.dto.BrokerPropertyData;
+import com.rooming.domain.broker.dto.BrokerPropertySummaryData;
 import com.rooming.domain.broker.entity.Broker;
 import com.rooming.domain.broker.repository.BrokerPropertyRepository;
 import com.rooming.domain.broker.repository.BrokerRepository;
@@ -27,6 +28,15 @@ public class BrokerPropertyService {
     private final BrokerPropertyRepository brokerPropertyRepository;
     private final BrokerRepository brokerRepository;
     private final PropertyInfrastructureService propertyInfrastructureService;
+
+    @Transactional(readOnly = true)
+    public List<BrokerPropertySummaryData> getMyPropertySummaries(Broker broker) {
+        if (broker == null || broker.getId() == null) {
+            throw new NotFoundException("Broker not found.");
+        }
+
+        return brokerPropertyRepository.findSummariesByBrokerId(broker.getId());
+    }
 
     @Transactional
     public BrokerPropertyData createProperty(Broker broker, BrokerPropertyCreateRequest request) {
