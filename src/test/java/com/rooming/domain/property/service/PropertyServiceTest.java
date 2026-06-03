@@ -84,6 +84,7 @@ class PropertyServiceTest {
         assertThat(images)
                 .extracting(PropertyImageResponse::getImageId, PropertyImageResponse::getImageUrl, PropertyImageResponse::getImageOrder)
                 .containsExactly(org.assertj.core.groups.Tuple.tuple(1, "/images/101_bath.png", 1));
+        verify(propertyImageStorageService).deletePropertyImage("/images/101_main.png");
     }
 
     @Test

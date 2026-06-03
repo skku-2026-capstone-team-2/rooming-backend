@@ -7,4 +7,6 @@ import java.util.List;
 public interface PropertyImageStorageService {
 
     List<String> storePropertyImages(Long propertyId, List<MultipartFile> images);
+
+    void deletePropertyImage(String imageUrl);
 }

@@ -54,6 +54,11 @@ odsay:
 rooming:
   ai:
     base-url: ${ROOMING_AI_BASE_URL:http://43.202.209.198:8000}
+  property-images:
+    s3:
+      bucket: ${PROPERTY_IMAGE_S3_BUCKET:rooming-property-image}
+      region: ${PROPERTY_IMAGE_S3_REGION:${AWS_REGION:ap-northeast-2}}
+    public-base-url: ${PROPERTY_IMAGE_PUBLIC_BASE_URL:}
 
 springdoc:
   api-docs:
