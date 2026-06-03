@@ -682,7 +682,7 @@ paths:
     post:
       tags: [Property]
       summary: Upload property images
-      description: Authenticated broker owner uploads image files. The server stores the files in image storage and returns image URLs; current backend uses dummy storage URLs until S3 is configured.
+      description: Authenticated broker owner uploads image files. The server stores the files in S3 and returns image URLs.
       parameters:
         - $ref: '#/components/parameters/propertyReadId'
       requestBody:
@@ -712,10 +712,10 @@ paths:
                   propertyId: 103
                   images:
                     - imageId: 1
-                      imageUrl: https://dummy-storage.rooming.local/properties/103/images/example-main.png
+                      imageUrl: https://rooming-property-image.s3.ap-northeast-2.amazonaws.com/properties/103/images/example-main.png
                       imageOrder: 1
                     - imageId: 2
-                      imageUrl: https://dummy-storage.rooming.local/properties/103/images/example-bath.png
+                      imageUrl: https://rooming-property-image.s3.ap-northeast-2.amazonaws.com/properties/103/images/example-bath.png
                       imageOrder: 2
                 message: Property images saved.
         '400':
@@ -746,7 +746,7 @@ paths:
                   propertyId: 103
                   images:
                     - imageId: 1
-                      imageUrl: /images/103_room_bath.png
+                      imageUrl: https://rooming-property-image.s3.ap-northeast-2.amazonaws.com/properties/103/images/example-bath.png
                       imageOrder: 1
                 message: Property image deleted.
         '400':

@@ -79,6 +79,8 @@ public class PropertyService {
             throw new IllegalArgumentException("Property image not found.");
         }
 
+        String imageUrl = imageUrls.get(imageId - 1);
+        propertyImageStorageService.deletePropertyImage(imageUrl);
         imageUrls.remove(imageId - 1);
         p.setImageUrls(imageUrls);
 

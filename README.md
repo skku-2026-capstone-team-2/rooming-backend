@@ -62,7 +62,7 @@ This backend expects these external services/configurations:
 | TMAP API | Walking routes and nearby infrastructure search. |
 | ODSAY API | Public transit routes. |
 | Rooming AI server | Recommendation generation through `/recommend`. |
-| Image storage | Property image file storage. Currently dummy-backed until S3 is configured. |
+| Amazon S3 | Property image file storage. |
 | Frontend origin | CORS and OAuth redirect target. |
 
 ## Authentication
@@ -143,12 +143,17 @@ Do not manually set `Content-Type` for multipart requests; the browser must set 
 
 Only the broker who registered the property can upload or delete images for that property.
 
-Current storage status:
+Current storage configuration:
 
 - `PropertyImageStorageService` defines the storage interface.
-- `DummyPropertyImageStorageService` returns dummy URLs and does not connect to AWS.
-- When S3 is ready, replace the dummy implementation with an S3-backed implementation.
+- `S3PropertyImageStorageService` uploads and deletes images from S3.
+- Default bucket name is `rooming-property-image`.
+- The EC2 instance should have an IAM role that can read/write/delete objects in the bucket.
+- Default region is `ap-northeast-2`; override it with `PROPERTY_IMAGE_S3_REGION` when needed.
+- Set `PROPERTY_IMAGE_PUBLIC_BASE_URL` if returned image URLs should use CloudFront or another public domain.
 - The database should continue storing image URLs, not image binary data.
+
+The EC2 IAM role gives this backend permission to upload/delete images. It does not by itself make image URLs readable by browsers. For frontend display, use a public-read bucket policy for these objects or put CloudFront in front of the bucket and set `PROPERTY_IMAGE_PUBLIC_BASE_URL`.
 
 ## 3D Models
 
@@ -184,6 +189,9 @@ Common configuration:
 | `TMAP_API_KEY` | TMAP API key. |
 | `ODSAY_API_KEY` | ODSAY API key. |
 | `ROOMING_AI_BASE_URL` | AI server base URL. |
+| `PROPERTY_IMAGE_S3_BUCKET` | S3 bucket for property images. Default `rooming-property-image`. |
+| `PROPERTY_IMAGE_S3_REGION` | S3 bucket region. Default `ap-northeast-2`. |
+| `PROPERTY_IMAGE_PUBLIC_BASE_URL` | Optional public base URL such as a CloudFront domain. |
 | `SERVER_PORT` | Spring server port. Default `8080`. |
 
 Example local `.env`:
@@ -200,6 +208,8 @@ GOOGLE_CLIENT_SECRET=replace-with-google-client-secret
 TMAP_API_KEY=replace-with-tmap-key
 ODSAY_API_KEY=replace-with-odsay-key
 ROOMING_AI_BASE_URL=http://localhost:8000
+PROPERTY_IMAGE_S3_BUCKET=rooming-property-image
+PROPERTY_IMAGE_S3_REGION=ap-northeast-2
 FRONTEND_ALLOWED_ORIGINS=http://localhost:5173
 AUTH_COOKIE_SECURE=false
 AUTH_COOKIE_SAME_SITE=Lax
