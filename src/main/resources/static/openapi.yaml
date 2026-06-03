@@ -269,6 +269,32 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /api/v1/broker/me/properties:
+    get:
+      tags: [Broker]
+      summary: List properties registered by the current broker
+      responses:
+        '200':
+          description: Broker property list fetched.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrokerPropertyListResponse'
+              example:
+                success: true
+                data:
+                  - propertyId: 2
+                    title: 캠퍼스빌 502호
+                  - propertyId: 1
+                    title: Campus-side one-room 3F
+                message: Broker property list fetched.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /api/v1/user/broker/me/properties:
     post:
       tags: [Broker]
@@ -1302,6 +1328,41 @@ components:
           hasProperty3D: true
           splineUrl: https://prod.spline.design/example-room/scene.splinecode
         message: Property saved.
+
+    BrokerPropertyListResponse:
+      type: object
+      required: [success, data, message]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BrokerPropertySummaryData'
+        message:
+          type: string
+          example: Broker property list fetched.
+      example:
+        success: true
+        data:
+          - propertyId: 2
+            title: 캠퍼스빌 502호
+          - propertyId: 1
+            title: Campus-side one-room 3F
+        message: Broker property list fetched.
+
+    BrokerPropertySummaryData:
+      type: object
+      required: [propertyId, title]
+      properties:
+        propertyId:
+          type: integer
+          format: int64
+          example: 104
+        title:
+          type: string
+          example: Campus-side one-room 3F
 
     BrokerPropertyData:
       type: object
