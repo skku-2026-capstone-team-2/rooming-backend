@@ -31,6 +31,9 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     @Value("${app.frontend.redirect-uri:https://rooming-frontend.vercel.app/}")
     private String frontendRedirectUri;
 
+    @Value("${app.frontend.local-redirect-uri:http://localhost:3000/}")
+    private String localFrontendRedirectUri;
+
     @Value("${app.auth.access-token-cookie-name:ROOMING_ACCESS_TOKEN}")
     private String accessTokenCookieName;
 
@@ -57,7 +60,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         response.addHeader(HttpHeaders.SET_COOKIE, accessTokenCookie(accessToken).toString());
         response.addHeader(HttpHeaders.SET_COOKIE, clearAccountTypeCookie().toString());
 
-        String targetUrl = buildTargetUrl(user, accessToken);
+        String targetUrl = buildTargetUrl(request, user, accessToken);
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
     }
@@ -89,17 +92,37 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         return true;
     }
 
-    private String buildTargetUrl(User user, String accessToken) {
+    private String buildTargetUrl(HttpServletRequest request, User user, String accessToken) {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("accountType", user.getAccountType().name());
         params.put("profileComplete", String.valueOf(isProfileComplete(user)));
 
+        String redirectUri = frontendRedirectUri(request);
+
         if (redirectAccessToken) {
             params.put("accessToken", accessToken);
-            return appendFragmentParams(frontendRedirectUri, params);
+            return appendFragmentParams(redirectUri, params);
         }
 
-        return appendQueryParams(frontendRedirectUri, params);
+        return appendQueryParams(redirectUri, params);
+    }
+
+    private String frontendRedirectUri(HttpServletRequest request) {
+        if (isLocalBackendRequest(request)) {
+            return localFrontendRedirectUri;
+        }
+        return frontendRedirectUri;
+    }
+
+    private boolean isLocalBackendRequest(HttpServletRequest request) {
+        String serverName = request.getServerName();
+        if (serverName == null) {
+            return false;
+        }
+
+        String host = serverName.toLowerCase();
+        return host.equals("localhost") || host.equals("127.0.0.1") || host.equals("::1")
+                || host.equals("[::1]");
     }
 
     private String appendQueryParams(String url, Map<String, String> params) {
