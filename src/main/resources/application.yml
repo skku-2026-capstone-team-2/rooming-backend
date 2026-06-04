@@ -28,6 +28,10 @@ spring:
             scope:
               - profile
               - email
+  cloud:
+    aws:
+      region:
+        static: ${PROPERTY_IMAGE_S3_REGION:${AWS_REGION:ap-northeast-2}}
 jwt:
   secret: ${SECRET_HASH_KEY}
   access-token-validity-in-seconds: 86400
@@ -35,7 +39,8 @@ jwt:
 app:
   frontend:
     redirect-uri: ${OAUTH2_SUCCESS_REDIRECT_URI:https://rooming-frontend.vercel.app/}
-    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app}},https://rooming.cloud,http://localhost:5173
+    local-redirect-uri: ${OAUTH2_LOCAL_SUCCESS_REDIRECT_URI:http://localhost:3000/}
+    allowed-origins: ${FRONTEND_ALLOWED_ORIGINS:${FRONTEND_ALLOWED_ORIGIN:https://rooming-frontend.vercel.app}},https://rooming.cloud,http://localhost:3000,http://localhost:5173
   auth:
     access-token-cookie-name: ROOMING_ACCESS_TOKEN
     oauth-account-type-cookie-name: ROOMING_OAUTH_ACCOUNT_TYPE

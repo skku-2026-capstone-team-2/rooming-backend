@@ -28,7 +28,7 @@ class SecurityConfigTest {
         ReflectionTestUtils.setField(
                 securityConfig,
                 "frontendAllowedOrigins",
-                "https://rooming-frontend.vercel.app/, https://rooming.cloud/, http://localhost:5173/"
+                "https://rooming-frontend.vercel.app/, https://rooming.cloud/, http://localhost:3000/, http://localhost:5173/"
         );
 
         CorsConfigurationSource source = securityConfig.corsConfigurationSource();
@@ -39,6 +39,8 @@ class SecurityConfigTest {
                 .isEqualTo("https://rooming-frontend.vercel.app");
         assertThat(configuration.checkOrigin("https://rooming.cloud"))
                 .isEqualTo("https://rooming.cloud");
+        assertThat(configuration.checkOrigin("http://localhost:3000"))
+                .isEqualTo("http://localhost:3000");
         assertThat(configuration.checkOrigin("http://localhost:5173"))
                 .isEqualTo("http://localhost:5173");
         assertThat(configuration.getAllowCredentials()).isTrue();
