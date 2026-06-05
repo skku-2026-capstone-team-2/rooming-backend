@@ -34,6 +34,7 @@ http://localhost:8080/swagger-ui.html
 - Allow verified brokers to register properties.
 - Store property metadata, Spline URLs, and property image URLs.
 - Receive property image uploads through a storage abstraction.
+- Keep nearby infrastructure and walking accessibility data synchronized for properties.
 - Manage seeker target places.
 - Call TMAP and ODSAY for route and location data.
 - Call the Rooming AI server for recommendations.
@@ -159,6 +160,23 @@ The EC2 IAM role gives this backend permission to upload/delete images. It does 
 
 Properties store a Spline URL for 3D model metadata. Spline hosts the actual model, so this backend stores and returns the URL only.
 
+## Infrastructure Sync
+
+The backend maintains nearby infrastructure data for properties using TMAP POI search.
+
+When a verified broker creates a property, the backend immediately stores nearby `Infrastructure` records and matching `InfraAccessibility` walking records for that property.
+
+The same infrastructure sync also runs automatically:
+
+- once after the application finishes startup,
+- then once per day by scheduler, defaulting to 3:00 AM Korea time.
+
+During each scheduled run, properties without infrastructure accessibility data are processed first. Properties that already have accessibility data are processed afterward to refresh stale POI selections.
+
+For each property, the backend stores up to two closest infrastructures per `INFRA_CATEGORY`. If the closest POIs change over time, the refresh process creates the new selected infrastructure/accessibility records and removes obsolete property accessibility links. An infrastructure record is deleted only when no property still references it.
+
+TMAP usage is quota-limited. If the TMAP POI API returns a quota or limit error during sync, the backend keeps any POIs and accessibility records already stored during that run, records the quota stop for the current Korean date, and stops processing remaining properties until the next day.
+
 ## Environment Variables
 
 The app imports an optional local `.env` file:
@@ -192,6 +210,8 @@ Common configuration:
 | `PROPERTY_IMAGE_S3_BUCKET` | S3 bucket for property images. Default `rooming-property-image`. |
 | `PROPERTY_IMAGE_S3_REGION` | S3 bucket region. Default `ap-northeast-2`. |
 | `PROPERTY_IMAGE_PUBLIC_BASE_URL` | Optional public base URL such as a CloudFront domain. |
+| `INFRASTRUCTURE_SYNC_DAILY_ENABLED` | Whether scheduled infrastructure sync is enabled. Default `true`. |
+| `INFRASTRUCTURE_SYNC_DAILY_CRON` | Daily infrastructure sync cron expression in Korea time. Default `0 0 3 * * *`. |
 | `SERVER_PORT` | Spring server port. Default `8080`. |
 
 Example local `.env`:
@@ -210,6 +230,8 @@ ODSAY_API_KEY=replace-with-odsay-key
 ROOMING_AI_BASE_URL=http://localhost:8000
 PROPERTY_IMAGE_S3_BUCKET=rooming-property-image
 PROPERTY_IMAGE_S3_REGION=ap-northeast-2
+INFRASTRUCTURE_SYNC_DAILY_ENABLED=true
+INFRASTRUCTURE_SYNC_DAILY_CRON=0 0 3 * * *
 FRONTEND_ALLOWED_ORIGINS=http://localhost:5173
 AUTH_COOKIE_SECURE=false
 AUTH_COOKIE_SAME_SITE=Lax

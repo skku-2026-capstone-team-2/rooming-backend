@@ -64,6 +64,10 @@ rooming:
       bucket: ${PROPERTY_IMAGE_S3_BUCKET:rooming-property-image}
       region: ${PROPERTY_IMAGE_S3_REGION:${AWS_REGION:ap-northeast-2}}
     public-base-url: ${PROPERTY_IMAGE_PUBLIC_BASE_URL:}
+  infrastructure-sync:
+    daily:
+      enabled: ${INFRASTRUCTURE_SYNC_DAILY_ENABLED:true}
+      cron: ${INFRASTRUCTURE_SYNC_DAILY_CRON:0 0 3 * * *}
 
 springdoc:
   api-docs:
