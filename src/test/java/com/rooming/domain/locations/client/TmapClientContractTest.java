@@ -6,6 +6,7 @@ import com.rooming.domain.locations.entity.type.INFRA_CATEGORY;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -21,6 +22,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestToUriTemplate;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 
 class TmapClientContractTest {
 
@@ -72,6 +74,23 @@ class TmapClientContractTest {
         );
 
         assertThat(candidates).isEmpty();
+    }
+
+    @Test
+    void infrastructureSearchReportsQuotaExceededOnTmapLimitResponse() {
+        server.expect(ExpectedCount.once(), request -> {
+                    assertThat(request.getURI().getQuery())
+                            .contains("count=2")
+                            .doesNotContain("categories=null");
+                })
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("appKey", API_KEY))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                        .body("quota exceeded")
+                        .contentType(MediaType.TEXT_PLAIN));
+
+        assertThat(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2945, 126.9748, 1).quotaExceeded())
+                .isTrue();
     }
 
     @Test

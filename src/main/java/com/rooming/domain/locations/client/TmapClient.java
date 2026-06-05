@@ -3,6 +3,7 @@ package com.rooming.domain.locations.client;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.rooming.domain.locations.dto.OdsayRouteCandidate;
 import com.rooming.domain.locations.dto.TmapInfrastructureCandidate;
+import com.rooming.domain.locations.dto.TmapInfrastructureSearchResult;
 import com.rooming.domain.locations.entity.type.INFRA_CATEGORY;
 import com.rooming.domain.locations.entity.value.Minutes;
 import com.rooming.domain.locations.entity.value.Path;
@@ -15,12 +16,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 @Component
 @Slf4j
@@ -61,7 +65,16 @@ public class TmapClient {
             double longitude,
             int radiusKm
     ) {
+        return findInfrastructureCandidatesWithQuotaStatus(latitude, longitude, radiusKm).candidates();
+    }
+
+    public TmapInfrastructureSearchResult findInfrastructureCandidatesWithQuotaStatus(
+            double latitude,
+            double longitude,
+            int radiusKm
+    ) {
         Map<String, TmapInfrastructureCandidate> candidates = new LinkedHashMap<>();
+        Set<INFRA_CATEGORY> completedCategories = EnumSet.noneOf(INFRA_CATEGORY.class);
 
         for (INFRA_CATEGORY category : INFRA_CATEGORY.values()) {
             String query = INFRA_CATEGORY_QUERIES.get(category);
@@ -69,10 +82,30 @@ public class TmapClient {
                 continue;
             }
 
-            JsonNode pois = findPoisAround(latitude, longitude, radiusKm, query);
+            JsonNode pois;
+            try {
+                pois = findPoisAround(latitude, longitude, radiusKm, query);
+            } catch (TmapQuotaExceededException e) {
+                log.warn(
+                        "Stopping TMAP infrastructure search because POI quota appears exhausted. "
+                                + "lat={}, lon={}, radiusKm={}, fetchedCandidates={}",
+                        latitude,
+                        longitude,
+                        radiusKm,
+                        candidates.size()
+                );
+                return new TmapInfrastructureSearchResult(
+                        new ArrayList<>(candidates.values()),
+                        completedCategories,
+                        true
+                );
+            }
+
             if (pois == null || !pois.isArray()) {
                 continue;
             }
+
+            completedCategories.add(category);
 
             for (JsonNode poi : pois) {
                 toInfrastructureCandidate(category, poi)
@@ -80,7 +113,7 @@ public class TmapClient {
             }
         }
 
-        return new ArrayList<>(candidates.values());
+        return new TmapInfrastructureSearchResult(new ArrayList<>(candidates.values()), completedCategories, false);
     }
 
     public Optional<OdsayRouteCandidate> findWalkingRoute(
@@ -283,6 +316,10 @@ public class TmapClient {
                     .retrieve()
                     .body(JsonNode.class);
 
+            if (isQuotaExceeded(response)) {
+                throw new TmapQuotaExceededException("TMAP POI quota appears exhausted.");
+            }
+
             JsonNode pois = response == null
                     ? null
                     : response.path("searchPoiInfo").path("pois").path("poi");
@@ -295,6 +332,18 @@ public class TmapClient {
                 );
             }
             return pois;
+        } catch (RestClientResponseException e) {
+            if (isQuotaExceeded(e)) {
+                throw new TmapQuotaExceededException(e.getMessage());
+            }
+            log.warn(
+                    "TMAP infrastructure search failed for lat={}, lon={}, radiusKm={}: {}",
+                    latitude,
+                    longitude,
+                    radiusKm,
+                    e.getMessage()
+            );
+            return null;
         } catch (RestClientException e) {
             log.warn(
                     "TMAP infrastructure search failed for lat={}, lon={}, radiusKm={}: {}",
@@ -305,6 +354,33 @@ public class TmapClient {
             );
             return null;
         }
+    }
+
+    private boolean isQuotaExceeded(RestClientResponseException e) {
+        if (e.getStatusCode().value() == 429) {
+            return true;
+        }
+
+        return containsQuotaText(e.getResponseBodyAsString());
+    }
+
+    private boolean isQuotaExceeded(JsonNode response) {
+        return response != null && containsQuotaText(response.toString());
+    }
+
+    private boolean containsQuotaText(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+
+        String normalized = value.toLowerCase();
+        return normalized.contains("quota")
+                || normalized.contains("limit")
+                || normalized.contains("exceed")
+                || normalized.contains("exhaust")
+                || normalized.contains("too many")
+                || normalized.contains("\uC0AC\uC6A9\uB7C9")
+                || normalized.contains("\uCD08\uACFC");
     }
 
     private Optional<TmapInfrastructureCandidate> toInfrastructureCandidate(INFRA_CATEGORY fallbackCategory, JsonNode poi) {
