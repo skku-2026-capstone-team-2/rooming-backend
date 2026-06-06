@@ -1,6 +1,9 @@
 package com.rooming.domain.locations.service;
 
 import com.rooming.domain.locations.client.TmapClient;
+import com.rooming.domain.locations.client.TmapQuotaExceededException;
+import com.rooming.domain.locations.dto.OdsayRouteCandidate;
+import com.rooming.domain.locations.dto.InfrastructureMaintenanceRepairResult;
 import com.rooming.domain.locations.dto.PropertyInfrastructureSyncResult;
 import com.rooming.domain.locations.dto.TmapInfrastructureCandidate;
 import com.rooming.domain.locations.dto.TmapInfrastructureSearchResult;
@@ -8,6 +11,8 @@ import com.rooming.domain.locations.entity.id.PropertyInfrastructureId;
 import com.rooming.domain.locations.entity.model.InfraAccessibility;
 import com.rooming.domain.locations.entity.model.Infrastructure;
 import com.rooming.domain.locations.entity.type.INFRA_CATEGORY;
+import com.rooming.domain.locations.entity.value.Minutes;
+import com.rooming.domain.locations.entity.value.Path;
 import com.rooming.domain.locations.repository.InfraAccessibilityRepository;
 import com.rooming.domain.locations.repository.InfrastructureRepository;
 import com.rooming.domain.property.entity.Property;
@@ -36,6 +41,7 @@ import java.util.stream.Collectors;
 public class PropertyInfrastructureService {
 
     private static final int INFRASTRUCTURE_RADIUS_KM = 1;
+    private static final double INFRASTRUCTURE_RADIUS_METERS = INFRASTRUCTURE_RADIUS_KM * 1000.0;
     private static final int DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY = 2;
     private static final double SAME_LOCATION_TOLERANCE_METERS = 0.01;
     private static final double EARTH_RADIUS_METERS = 6_371_000.0;
@@ -77,16 +83,51 @@ public class PropertyInfrastructureService {
 
     @Transactional
     public List<InfraAccessibility> storeInfrastructureAccessibilities(Property property) {
-        return syncClosestInfrastructures(property, false, DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY)
+        return syncClosestInfrastructures(
+                property,
+                true,
+                DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY,
+                true
+        )
                 .createdAccessibilities();
     }
 
     @Transactional
     public PropertyInfrastructureSyncResult syncMissingInfrastructure(Property property) {
+        return syncNearbyInfrastructures(property);
+    }
+
+    @Transactional
+    public PropertyInfrastructureSyncResult syncNearbyInfrastructures(Property property) {
+        validatePropertyLocation(property);
+
+        TmapInfrastructureSearchResult searchResult = tmapClient.findInfrastructureCandidatesWithQuotaStatus(
+                property.getLatitude(),
+                property.getLongitude(),
+                INFRASTRUCTURE_RADIUS_KM
+        );
+        List<Infrastructure> storedInfrastructures = storeInfrastructureCandidates(searchResult.candidates());
+        property.markNearbyInfrastructuresFetched(!searchResult.quotaExceeded());
+        if (searchResult.quotaExceeded()) {
+            property.markInfraAccessibilitiesFetched(false);
+        }
+        propertyRepository.save(property);
+
+        return new PropertyInfrastructureSyncResult(
+                storedInfrastructures.size(),
+                0,
+                0,
+                searchResult.quotaExceeded()
+        );
+    }
+
+    @Transactional
+    public PropertyInfrastructureSyncResult syncMissingAccessibilities(Property property) {
         SyncOperation operation = syncClosestInfrastructures(
                 property,
                 false,
-                DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY
+                DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY,
+                false
         );
         return operation.toResult();
     }
@@ -96,43 +137,62 @@ public class PropertyInfrastructureService {
         SyncOperation operation = syncClosestInfrastructures(
                 property,
                 true,
-                DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY
+                DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY,
+                true
         );
         return operation.toResult();
     }
 
     private SyncOperation syncClosestInfrastructures(
             Property property,
-            boolean reconcileExisting,
-            int infrastructureLimitPerCategory
+            boolean fetchPoisFromTmap,
+            int infrastructureLimitPerCategory,
+            boolean refreshSelection
     ) {
         validatePropertyLocation(property);
 
-        TmapInfrastructureSearchResult searchResult = tmapClient.findInfrastructureCandidatesWithQuotaStatus(
-                property.getLatitude(),
-                property.getLongitude(),
-                INFRASTRUCTURE_RADIUS_KM
-        );
-        List<Infrastructure> storedInfrastructures = storeInfrastructureCandidates(searchResult.candidates());
+        TmapInfrastructureSearchResult searchResult = fetchPoisFromTmap
+                ? tmapClient.findInfrastructureCandidatesWithQuotaStatus(
+                        property.getLatitude(),
+                        property.getLongitude(),
+                        INFRASTRUCTURE_RADIUS_KM
+                )
+                : new TmapInfrastructureSearchResult(List.of(), Set.of(), false);
+        List<Infrastructure> storedInfrastructures = fetchPoisFromTmap
+                ? storeInfrastructureCandidates(searchResult.candidates())
+                : findSelectedStoredInfrastructures(property, infrastructureLimitPerCategory);
         List<Infrastructure> selectedInfrastructures = selectClosestPerCategory(
                 property,
                 storedInfrastructures,
                 infrastructureLimitPerCategory
         );
 
-        List<InfraAccessibility> createdAccessibilities = storeMissingAccessibilities(
+        AccessibilityStoreOperation accessibilityStoreOperation = storeMissingAccessibilities(
                 property,
                 selectedInfrastructures
         );
-        int removedAccessibilityCount = reconcileExisting
-                ? removeObsoleteAccessibilities(property, selectedInfrastructures, searchResult.completedCategories())
+        int removedAccessibilityCount = accessibilityStoreOperation.quotaExceeded()
+                ? 0
+                : refreshSelection
+                ? removeObsoleteAccessibilities(
+                        property,
+                        selectedInfrastructures,
+                        completedCategories(selectedInfrastructures, searchResult.completedCategories())
+                )
                 : 0;
+
+        boolean quotaExceeded = searchResult.quotaExceeded() || accessibilityStoreOperation.quotaExceeded();
+        if (fetchPoisFromTmap) {
+            property.markNearbyInfrastructuresFetched(!searchResult.quotaExceeded());
+        }
+        property.markInfraAccessibilitiesFetched(!quotaExceeded && !accessibilityStoreOperation.incomplete());
+        propertyRepository.save(property);
 
         return new SyncOperation(
                 selectedInfrastructures.size(),
-                createdAccessibilities,
+                accessibilityStoreOperation.createdAccessibilities(),
                 removedAccessibilityCount,
-                searchResult.quotaExceeded()
+                quotaExceeded
         );
     }
 
@@ -142,6 +202,21 @@ public class PropertyInfrastructureService {
                 .map(this::findOrSaveInfrastructure)
                 .flatMap(Optional::stream)
                 .toList();
+    }
+
+    private List<Infrastructure> findSelectedStoredInfrastructures(
+            Property property,
+            int infrastructureLimitPerCategory
+    ) {
+        return selectClosestPerCategory(
+                property,
+                infrastructureRepository.findNearbyNonEtcWithinMeters(
+                        property.getLatitude(),
+                        property.getLongitude(),
+                        INFRASTRUCTURE_RADIUS_METERS
+                ),
+                infrastructureLimitPerCategory
+        );
     }
 
     private List<Infrastructure> selectClosestPerCategory(
@@ -157,7 +232,7 @@ public class PropertyInfrastructureService {
         );
     }
 
-    private List<InfraAccessibility> storeMissingAccessibilities(
+    private AccessibilityStoreOperation storeMissingAccessibilities(
             Property property,
             List<Infrastructure> infrastructures
     ) {
@@ -169,35 +244,61 @@ public class PropertyInfrastructureService {
         }
 
         List<InfraAccessibility> savedAccessibilities = new ArrayList<>();
+        boolean incomplete = false;
         for (Infrastructure infrastructure : infrastructuresById.values()) {
             PropertyInfrastructureId id = new PropertyInfrastructureId(property.getPropertyId(), infrastructure.getId());
-            if (infraAccessibilityRepository.existsById(id)) {
+            Optional<InfraAccessibility> existingAccessibility = infraAccessibilityRepository.findById(id);
+            if (existingAccessibility.isPresent() && existingAccessibility.get().hasWalkingRouteJson()) {
                 continue;
             }
 
+            Optional<OdsayRouteCandidate> routeCandidate;
             try {
-                Optional<InfraAccessibility> accessibility = buildInfraAccessibility(property, infrastructure);
-                if (accessibility.isEmpty()) {
-                    log.warn(
-                            "Skipping infra accessibility because TMAP walking route was unavailable for propertyId={}, infrastructureId={}",
-                            property.getPropertyId(),
-                            infrastructure.getId()
-                    );
-                    continue;
-                }
-                Optional<InfraAccessibility> saved = saveInfraAccessibility(accessibility.get());
-                saved.ifPresent(savedAccessibilities::add);
+                routeCandidate = findWalkingRouteCandidate(property, infrastructure);
+            } catch (TmapQuotaExceededException e) {
+                log.warn(
+                        "Stopping infra accessibility creation because TMAP walking route quota appears exhausted. "
+                                + "propertyId={}, createdAccessibilities={}",
+                        property.getPropertyId(),
+                        savedAccessibilities.size()
+                );
+                return new AccessibilityStoreOperation(savedAccessibilities, true, true);
             } catch (RuntimeException e) {
                 log.warn(
-                        "Failed during infra accessibility processing for propertyId={}, infrastructureId={}: {}",
+                        "Failed while finding infra walking route for propertyId={}, infrastructureId={}: {}",
                         property.getPropertyId(),
                         infrastructure.getId(),
                         e.getMessage()
                 );
+                incomplete = true;
+                continue;
             }
+
+            if (routeCandidate.isEmpty()) {
+                log.warn(
+                        "Skipping infra accessibility because TMAP walking route was unavailable for propertyId={}, infrastructureId={}",
+                        property.getPropertyId(),
+                        infrastructure.getId()
+                );
+                incomplete = true;
+                continue;
+            }
+
+            if (existingAccessibility.isPresent()) {
+                updateInfraAccessibilityRoute(existingAccessibility.get(), routeCandidate.get());
+                continue;
+            }
+
+            InfraAccessibility accessibility = buildInfraAccessibility(
+                    property,
+                    infrastructure,
+                    routeCandidate.get()
+            );
+            Optional<InfraAccessibility> saved = saveInfraAccessibility(accessibility);
+            saved.ifPresent(savedAccessibilities::add);
         }
 
-        return savedAccessibilities;
+        return new AccessibilityStoreOperation(savedAccessibilities, false, incomplete);
     }
 
     private int removeObsoleteAccessibilities(
@@ -235,6 +336,20 @@ public class PropertyInfrastructureService {
         deleteOrphanInfrastructures(obsoleteInfrastructureIds);
 
         return obsoleteAccessibilities.size();
+    }
+
+    private Set<INFRA_CATEGORY> completedCategories(
+            List<Infrastructure> selectedInfrastructures,
+            Set<INFRA_CATEGORY> tmapCompletedCategories
+    ) {
+        if (tmapCompletedCategories != null && !tmapCompletedCategories.isEmpty()) {
+            return tmapCompletedCategories;
+        }
+
+        return selectedInfrastructures.stream()
+                .map(Infrastructure::getCategory)
+                .filter(category -> category != null && category != INFRA_CATEGORY.ETC)
+                .collect(Collectors.toCollection(() -> new LinkedHashSet<>()));
     }
 
     private boolean isObsolete(
@@ -318,18 +433,21 @@ public class PropertyInfrastructureService {
     }
 
     private Optional<Infrastructure> findOrSaveInfrastructure(Infrastructure infrastructure) {
+        Optional<Infrastructure> existingInfrastructure = findExistingInfrastructure(infrastructure);
+        if (existingInfrastructure.isPresent()) {
+            return existingInfrastructure;
+        }
+
         try {
             return Optional.of(infrastructureRepository.saveAndFlush(infrastructure));
         } catch (DataIntegrityViolationException e) {
-            Optional<Infrastructure> existingInfrastructure = findExistingInfrastructure(infrastructure);
-            if (existingInfrastructure.isEmpty()) {
-                log.warn(
-                        "Failed to resolve existing infrastructure after duplicate insert for name={}, category={}",
-                        infrastructure.getName(),
-                        infrastructure.getCategory()
-                );
-            }
-            return existingInfrastructure;
+            log.warn(
+                    "Infrastructure duplicate was detected during insert after pre-check for name={}, category={}. "
+                            + "The current transaction will roll back.",
+                    infrastructure.getName(),
+                    infrastructure.getCategory()
+            );
+            throw e;
         } catch (RuntimeException e) {
             log.warn(
                     "Failed during infrastructure save for name={}, category={}: {}",
@@ -337,7 +455,7 @@ public class PropertyInfrastructureService {
                     infrastructure.getCategory(),
                     e.getMessage()
             );
-            return Optional.empty();
+            throw e;
         }
     }
 
@@ -365,15 +483,13 @@ public class PropertyInfrastructureService {
         try {
             return Optional.of(infraAccessibilityRepository.saveAndFlush(accessibility));
         } catch (DataIntegrityViolationException e) {
-            Optional<InfraAccessibility> existingAccessibility = infraAccessibilityRepository.findById(accessibility.getId());
-            if (existingAccessibility.isEmpty()) {
-                log.warn(
-                        "Failed to resolve existing infra accessibility after duplicate insert for propertyId={}, infrastructureId={}",
-                        accessibility.getId().getPropertyId(),
-                        accessibility.getId().getInfrastructureId()
-                );
-            }
-            return existingAccessibility;
+            log.warn(
+                    "Infra accessibility duplicate was detected during insert after pre-check for propertyId={}, infrastructureId={}. "
+                            + "The current transaction will roll back.",
+                    accessibility.getId().getPropertyId(),
+                    accessibility.getId().getInfrastructureId()
+            );
+            throw e;
         } catch (RuntimeException e) {
             log.warn(
                     "Failed during infra accessibility save for propertyId={}, infrastructureId={}: {}",
@@ -381,22 +497,147 @@ public class PropertyInfrastructureService {
                     accessibility.getId().getInfrastructureId(),
                     e.getMessage()
             );
-            return Optional.empty();
+            throw e;
         }
     }
 
-    private Optional<InfraAccessibility> buildInfraAccessibility(Property property, Infrastructure infrastructure) {
+    private Optional<OdsayRouteCandidate> findWalkingRouteCandidate(Property property, Infrastructure infrastructure) {
         if (infrastructure.getId() == null) {
             throw new IllegalArgumentException("Save Infrastructure before creating InfraAccessibility.");
         }
 
         return tmapClient.findWalkingRoute(
-                        property.getLatitude(),
-                        property.getLongitude(),
-                        infrastructure.getLatitude(),
-                        infrastructure.getLongitude()
-                )
-                .map(route -> new InfraAccessibility(property, infrastructure, route.duration(), route.path()));
+                property.getLatitude(),
+                property.getLongitude(),
+                infrastructure.getLatitude(),
+                infrastructure.getLongitude()
+        );
+    }
+
+    private InfraAccessibility buildInfraAccessibility(
+            Property property,
+            Infrastructure infrastructure,
+            OdsayRouteCandidate route
+    ) {
+        return new InfraAccessibility(property, infrastructure, route.duration(), route.path());
+    }
+
+    private void updateInfraAccessibilityRoute(InfraAccessibility accessibility, OdsayRouteCandidate route) {
+        accessibility.updateWalkingRoute(route.duration(), route.path());
+        saveInfraAccessibility(accessibility);
+    }
+
+    public Optional<InfraAccessibility> buildTransientInfraAccessibility(
+            Property property,
+            Infrastructure infrastructure
+    ) {
+        validatePropertyLocation(property);
+        if (infrastructure == null || infrastructure.getId() == null) {
+            return Optional.empty();
+        }
+
+        try {
+            return findWalkingRouteCandidate(property, infrastructure)
+                    .map(route -> buildInfraAccessibility(property, infrastructure, route));
+        } catch (TmapQuotaExceededException e) {
+            log.warn(
+                    "Skipping transient infra accessibility because TMAP walking route quota appears exhausted. "
+                            + "propertyId={}, infrastructureId={}",
+                    property.getPropertyId(),
+                    infrastructure.getId()
+            );
+            return Optional.empty();
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Skipping transient infra accessibility for propertyId={}, infrastructureId={}: {}",
+                    property.getPropertyId(),
+                    infrastructure.getId(),
+                    e.getMessage()
+            );
+            return Optional.empty();
+        }
+    }
+
+    @Async
+    @Transactional
+    public void storeInfraAccessibilityAsync(
+            Long propertyId,
+            Long infrastructureId,
+            Minutes walkingTime,
+            Path walkingRouteJson
+    ) {
+        if (propertyId == null || infrastructureId == null || walkingTime == null || walkingRouteJson == null) {
+            return;
+        }
+
+        try {
+            Optional<Property> property = propertyRepository.findById(propertyId);
+            Optional<Infrastructure> infrastructure = infrastructureRepository.findById(infrastructureId);
+            if (property.isEmpty() || infrastructure.isEmpty()) {
+                return;
+            }
+
+            PropertyInfrastructureId id = new PropertyInfrastructureId(propertyId, infrastructureId);
+            Optional<InfraAccessibility> existingAccessibility = infraAccessibilityRepository.findById(id);
+            if (existingAccessibility.isPresent()) {
+                existingAccessibility.get().updateWalkingRoute(walkingTime, walkingRouteJson);
+                saveInfraAccessibility(existingAccessibility.get());
+                return;
+            }
+
+            saveInfraAccessibility(new InfraAccessibility(
+                    property.get(),
+                    infrastructure.get(),
+                    walkingTime,
+                    walkingRouteJson
+            ));
+        } catch (RuntimeException e) {
+            log.warn(
+                    "Async infra accessibility save failed for propertyId={}, infrastructureId={}: {}",
+                    propertyId,
+                    infrastructureId,
+                    e.getMessage()
+            );
+        }
+    }
+
+    @Transactional
+    public InfrastructureMaintenanceRepairResult repairInfrastructureSyncState() {
+        int deletedInvalidAccessibilities = infraAccessibilityRepository.deleteInvalidAccessibilities();
+        List<Property> properties = propertyRepository.findAllByLatitudeIsNotNullAndLongitudeIsNotNull();
+        int nearbyFetchedCount = 0;
+        int accessibilityFetchedCount = 0;
+
+        for (Property property : properties) {
+            List<Infrastructure> selectedInfrastructures = findSelectedStoredInfrastructures(
+                    property,
+                    DEFAULT_INFRASTRUCTURE_LIMIT_PER_CATEGORY
+            );
+            boolean nearbyFetched = !selectedInfrastructures.isEmpty();
+            boolean accessibilitiesFetched = selectedInfrastructures.stream()
+                    .allMatch(infrastructure -> infraAccessibilityRepository.existsValidAccessibility(
+                            property.getPropertyId(),
+                            infrastructure.getId()
+                    ));
+
+            property.markNearbyInfrastructuresFetched(nearbyFetched);
+            property.markInfraAccessibilitiesFetched(nearbyFetched && accessibilitiesFetched);
+
+            if (property.nearbyInfrastructuresFetched()) {
+                nearbyFetchedCount++;
+            }
+            if (property.infraAccessibilitiesFetched()) {
+                accessibilityFetchedCount++;
+            }
+        }
+
+        propertyRepository.saveAll(properties);
+        return new InfrastructureMaintenanceRepairResult(
+                properties.size(),
+                deletedInvalidAccessibilities,
+                nearbyFetchedCount,
+                accessibilityFetchedCount
+        );
     }
 
     private Infrastructure toInfrastructure(TmapInfrastructureCandidate candidate) {
@@ -432,5 +673,12 @@ public class PropertyInfrastructureService {
                     quotaExceeded
             );
         }
+    }
+
+    private record AccessibilityStoreOperation(
+            List<InfraAccessibility> createdAccessibilities,
+            boolean quotaExceeded,
+            boolean incomplete
+    ) {
     }
 }

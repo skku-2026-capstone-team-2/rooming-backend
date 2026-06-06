@@ -17,6 +17,7 @@ import com.rooming.domain.locations.entity.value.SubPath;
 import com.rooming.domain.locations.repository.InfraAccessibilityRepository;
 import com.rooming.domain.locations.repository.InfrastructureRepository;
 import com.rooming.domain.locations.repository.RouteRepository;
+import com.rooming.domain.locations.service.PropertyInfrastructureService;
 import com.rooming.domain.locations.service.RouteGeometryService;
 import com.rooming.domain.property.entity.Property;
 import com.rooming.domain.property.repository.PropertyRepository;
@@ -51,6 +52,7 @@ public class RecommendationService {
     private final RouteGeometryService routeGeometryService;
     private final InfraAccessibilityRepository infraAccessibilityRepository;
     private final InfrastructureRepository infrastructureRepository;
+    private final PropertyInfrastructureService propertyInfrastructureService;
     private final RecommendationRepository recommendationRepository;
     private final ObjectMapper objectMapper;
 
@@ -339,6 +341,7 @@ public class RecommendationService {
 
         return infraIds.stream()
                 .map(infraId -> toInfrastructureDetails(
+                        property,
                         infraId,
                         accessibilitiesByInfraId.get(infraId),
                         infrastructuresById.get(infraId)
@@ -347,20 +350,41 @@ public class RecommendationService {
     }
 
     private RecommendationDtos.InfrastructureDetails toInfrastructureDetails(
+            Property property,
             Long infrastructureId,
             InfraAccessibility accessibility,
             Infrastructure infrastructure
     ) {
+        InfraAccessibility effectiveAccessibility = accessibility;
+        if ((effectiveAccessibility == null || !effectiveAccessibility.hasWalkingRouteJson())
+                && property != null
+                && infrastructure != null) {
+            effectiveAccessibility = propertyInfrastructureService
+                    .buildTransientInfraAccessibility(property, infrastructure)
+                    .orElse(effectiveAccessibility);
+            if (effectiveAccessibility != null && effectiveAccessibility.hasWalkingRouteJson()) {
+                propertyInfrastructureService.storeInfraAccessibilityAsync(
+                        property.getPropertyId(),
+                        infrastructure.getId(),
+                        effectiveAccessibility.getWalkingTime(),
+                        effectiveAccessibility.getWalkingRouteJson()
+                );
+            }
+        }
+
         Infrastructure selectedInfrastructure = accessibility == null
                 ? infrastructure
                 : accessibility.getInfrastructure();
+        if (effectiveAccessibility != null) {
+            selectedInfrastructure = effectiveAccessibility.getInfrastructure();
+        }
         return new RecommendationDtos.InfrastructureDetails(
                 infrastructureId,
                 selectedInfrastructure == null ? null : selectedInfrastructure.getName(),
                 category(selectedInfrastructure),
                 roadAddress(selectedInfrastructure),
                 coordinate(selectedInfrastructure),
-                accessibility == null ? null : minutesValue(accessibility.getWalkingTime())
+                effectiveAccessibility == null ? null : minutesValue(effectiveAccessibility.getWalkingTime())
         );
     }
 

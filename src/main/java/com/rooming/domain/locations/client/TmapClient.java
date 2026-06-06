@@ -144,6 +144,10 @@ public class TmapClient {
                     .retrieve()
                     .body(JsonNode.class);
 
+            if (isQuotaExceeded(response)) {
+                throw new TmapQuotaExceededException("TMAP walking route quota appears exhausted.");
+            }
+
             Optional<OdsayRouteCandidate> candidate = toWalkingRoute(
                     response,
                     startLatitude,
@@ -161,6 +165,19 @@ public class TmapClient {
                 );
             }
             return candidate;
+        } catch (RestClientResponseException e) {
+            if (isQuotaExceeded(e)) {
+                throw new TmapQuotaExceededException(e.getMessage());
+            }
+            log.warn(
+                    "TMAP walking route request failed for start=({}, {}), end=({}, {}): {}",
+                    startLatitude,
+                    startLongitude,
+                    endLatitude,
+                    endLongitude,
+                    e.getMessage()
+            );
+            return Optional.empty();
         } catch (RestClientException e) {
             log.warn(
                     "TMAP walking route request failed for start=({}, {}), end=({}, {}): {}",

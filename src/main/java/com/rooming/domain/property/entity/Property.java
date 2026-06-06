@@ -48,6 +48,12 @@ public class Property {
     private Boolean has3DModel;
     private String splineUrl;
     private List<String> imageUrls;
+    @Builder.Default
+    @Column(name = "nearby_infrastructures_fetched")
+    private Boolean nearbyInfrastructuresFetched = false;
+    @Builder.Default
+    @Column(name = "infra_accessibilities_fetched")
+    private Boolean infraAccessibilitiesFetched = false;
 
     @JsonIgnore
     @ToString.Exclude
@@ -58,5 +64,31 @@ public class Property {
 
     public void assignBroker(Broker broker) {
         this.broker = broker;
+    }
+
+    public boolean nearbyInfrastructuresFetched() {
+        return Boolean.TRUE.equals(nearbyInfrastructuresFetched);
+    }
+
+    public boolean infraAccessibilitiesFetched() {
+        return Boolean.TRUE.equals(infraAccessibilitiesFetched);
+    }
+
+    public void markNearbyInfrastructuresFetched(boolean fetched) {
+        this.nearbyInfrastructuresFetched = fetched;
+    }
+
+    public void markInfraAccessibilitiesFetched(boolean fetched) {
+        this.infraAccessibilitiesFetched = fetched;
+    }
+
+    @PrePersist
+    void initializeInfrastructureSyncFlags() {
+        if (nearbyInfrastructuresFetched == null) {
+            nearbyInfrastructuresFetched = false;
+        }
+        if (infraAccessibilitiesFetched == null) {
+            infraAccessibilitiesFetched = false;
+        }
     }
 }

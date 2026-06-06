@@ -2,7 +2,6 @@ package com.rooming.domain.locations.service;
 
 import com.rooming.domain.locations.dto.PropertyInfrastructureSyncResult;
 import com.rooming.domain.locations.entity.model.PropertyInfrastructureSyncState;
-import com.rooming.domain.locations.repository.InfraAccessibilityRepository;
 import com.rooming.domain.locations.repository.PropertyInfrastructureSyncStateRepository;
 import com.rooming.domain.property.entity.Property;
 import com.rooming.domain.property.repository.PropertyRepository;
@@ -23,7 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class DailyPropertyInfrastructureSyncScheduler {
 
     private final PropertyRepository propertyRepository;
-    private final InfraAccessibilityRepository infraAccessibilityRepository;
     private final PropertyInfrastructureService propertyInfrastructureService;
     private final PropertyInfrastructureSyncStateRepository syncStateRepository;
     private final TmapPoiSyncQuotaService quotaService;
@@ -57,15 +55,18 @@ public class DailyPropertyInfrastructureSyncScheduler {
         for (Property property : propertyRepository.findPropertiesForDailyInfrastructureSync()) {
             PropertyInfrastructureSyncState state = syncState(property);
             Instant now = Instant.now();
-            boolean missingAccessibilities = !infraAccessibilityRepository.existsByPropertyPropertyId(
-                    property.getPropertyId()
-            );
+            SyncMode syncMode = syncMode(property);
 
             try {
-                PropertyInfrastructureSyncResult result = missingAccessibilities
-                        ? propertyInfrastructureService.syncMissingInfrastructure(property)
-                        : propertyInfrastructureService.refreshInfrastructureSelection(property);
-                recordSuccess(state, now, result, missingAccessibilities);
+                PropertyInfrastructureSyncResult result = switch (syncMode) {
+                    case NEARBY_INFRASTRUCTURE ->
+                            propertyInfrastructureService.syncNearbyInfrastructures(property);
+                    case INFRA_ACCESSIBILITY ->
+                            propertyInfrastructureService.syncMissingAccessibilities(property);
+                    case REFRESH ->
+                            propertyInfrastructureService.refreshInfrastructureSelection(property);
+                };
+                recordSuccess(state, now, result, syncMode);
 
                 if (result.quotaExceeded()) {
                     state.recordQuotaStopped(
@@ -99,9 +100,9 @@ public class DailyPropertyInfrastructureSyncScheduler {
             PropertyInfrastructureSyncState state,
             Instant now,
             PropertyInfrastructureSyncResult result,
-            boolean missingAccessibilities
+            SyncMode syncMode
     ) {
-        if (missingAccessibilities) {
+        if (syncMode != SyncMode.REFRESH) {
             state.recordMissingSync(
                     now,
                     result.infrastructureCount(),
@@ -121,5 +122,21 @@ public class DailyPropertyInfrastructureSyncScheduler {
     private PropertyInfrastructureSyncState syncState(Property property) {
         return syncStateRepository.findById(property.getPropertyId())
                 .orElseGet(() -> new PropertyInfrastructureSyncState(property.getPropertyId()));
+    }
+
+    private SyncMode syncMode(Property property) {
+        if (!property.nearbyInfrastructuresFetched()) {
+            return SyncMode.NEARBY_INFRASTRUCTURE;
+        }
+        if (!property.infraAccessibilitiesFetched()) {
+            return SyncMode.INFRA_ACCESSIBILITY;
+        }
+        return SyncMode.REFRESH;
+    }
+
+    private enum SyncMode {
+        NEARBY_INFRASTRUCTURE,
+        INFRA_ACCESSIBILITY,
+        REFRESH
     }
 }

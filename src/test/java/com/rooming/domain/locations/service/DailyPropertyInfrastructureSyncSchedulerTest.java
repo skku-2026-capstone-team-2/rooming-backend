@@ -2,7 +2,6 @@ package com.rooming.domain.locations.service;
 
 import com.rooming.domain.locations.dto.PropertyInfrastructureSyncResult;
 import com.rooming.domain.locations.entity.model.PropertyInfrastructureSyncState;
-import com.rooming.domain.locations.repository.InfraAccessibilityRepository;
 import com.rooming.domain.locations.repository.PropertyInfrastructureSyncStateRepository;
 import com.rooming.domain.property.entity.Property;
 import com.rooming.domain.property.repository.PropertyRepository;
@@ -28,8 +27,6 @@ import static org.mockito.Mockito.when;
 class DailyPropertyInfrastructureSyncSchedulerTest {
 
     private final PropertyRepository propertyRepository = mock(PropertyRepository.class);
-    private final InfraAccessibilityRepository infraAccessibilityRepository =
-            mock(InfraAccessibilityRepository.class);
     private final PropertyInfrastructureService propertyInfrastructureService =
             mock(PropertyInfrastructureService.class);
     private final PropertyInfrastructureSyncStateRepository syncStateRepository =
@@ -38,7 +35,6 @@ class DailyPropertyInfrastructureSyncSchedulerTest {
     private final DailyPropertyInfrastructureSyncScheduler scheduler =
             new DailyPropertyInfrastructureSyncScheduler(
                     propertyRepository,
-                    infraAccessibilityRepository,
                     propertyInfrastructureService,
                     syncStateRepository,
                     quotaService
@@ -67,46 +63,48 @@ class DailyPropertyInfrastructureSyncSchedulerTest {
     }
 
     @Test
-    void processesMissingPropertiesBeforeRefreshingExistingProperties() {
-        Property missingProperty = property(101L);
-        Property existingProperty = property(202L);
+    void processesNearbyFirstThenAccessibilitiesThenRefresh() {
+        Property missingInfrastructureProperty = property(101L, false, false);
+        Property missingAccessibilityProperty = property(202L, true, false);
+        Property refreshProperty = property(303L, true, true);
         when(quotaService.isQuotaExhaustedToday()).thenReturn(false);
         when(propertyRepository.findPropertiesForDailyInfrastructureSync())
-                .thenReturn(List.of(missingProperty, existingProperty));
+                .thenReturn(List.of(missingInfrastructureProperty, missingAccessibilityProperty, refreshProperty));
         when(syncStateRepository.findById(101L)).thenReturn(Optional.empty());
         when(syncStateRepository.findById(202L)).thenReturn(Optional.empty());
-        when(infraAccessibilityRepository.existsByPropertyPropertyId(101L)).thenReturn(false);
-        when(infraAccessibilityRepository.existsByPropertyPropertyId(202L)).thenReturn(true);
-        when(propertyInfrastructureService.syncMissingInfrastructure(missingProperty))
-                .thenReturn(new PropertyInfrastructureSyncResult(2, 2, 0, false));
-        when(propertyInfrastructureService.refreshInfrastructureSelection(existingProperty))
+        when(syncStateRepository.findById(303L)).thenReturn(Optional.empty());
+        when(propertyInfrastructureService.syncNearbyInfrastructures(missingInfrastructureProperty))
+                .thenReturn(new PropertyInfrastructureSyncResult(2, 0, 0, false));
+        when(propertyInfrastructureService.syncMissingAccessibilities(missingAccessibilityProperty))
+                .thenReturn(new PropertyInfrastructureSyncResult(2, 1, 1, false));
+        when(propertyInfrastructureService.refreshInfrastructureSelection(refreshProperty))
                 .thenReturn(new PropertyInfrastructureSyncResult(2, 1, 1, false));
 
         scheduler.syncAllPropertyInfrastructures();
 
         InOrder order = inOrder(propertyInfrastructureService);
-        order.verify(propertyInfrastructureService).syncMissingInfrastructure(missingProperty);
-        order.verify(propertyInfrastructureService).refreshInfrastructureSelection(existingProperty);
+        order.verify(propertyInfrastructureService).syncNearbyInfrastructures(missingInfrastructureProperty);
+        order.verify(propertyInfrastructureService).syncMissingAccessibilities(missingAccessibilityProperty);
+        order.verify(propertyInfrastructureService).refreshInfrastructureSelection(refreshProperty);
         verify(quotaService, never()).markQuotaExhaustedNow();
     }
 
     @Test
     void stopsAfterQuotaExceededAndStoresCurrentPropertyState() {
-        Property firstProperty = property(101L);
-        Property secondProperty = property(202L);
+        Property firstProperty = property(101L, false, false);
+        Property secondProperty = property(202L, true, false);
         when(quotaService.isQuotaExhaustedToday()).thenReturn(false);
         when(propertyRepository.findPropertiesForDailyInfrastructureSync())
                 .thenReturn(List.of(firstProperty, secondProperty));
         when(syncStateRepository.findById(101L)).thenReturn(Optional.empty());
-        when(infraAccessibilityRepository.existsByPropertyPropertyId(101L)).thenReturn(false);
-        when(propertyInfrastructureService.syncMissingInfrastructure(firstProperty))
-                .thenReturn(new PropertyInfrastructureSyncResult(2, 2, 0, true));
+        when(propertyInfrastructureService.syncNearbyInfrastructures(firstProperty))
+                .thenReturn(new PropertyInfrastructureSyncResult(2, 0, 0, true));
 
         scheduler.syncAllPropertyInfrastructures();
 
-        verify(propertyInfrastructureService).syncMissingInfrastructure(firstProperty);
+        verify(propertyInfrastructureService).syncNearbyInfrastructures(firstProperty);
         verify(propertyInfrastructureService, never()).refreshInfrastructureSelection(secondProperty);
-        verify(propertyInfrastructureService, never()).syncMissingInfrastructure(secondProperty);
+        verify(propertyInfrastructureService, never()).syncMissingAccessibilities(secondProperty);
         verify(quotaService).markQuotaExhaustedNow();
 
         ArgumentCaptor<PropertyInfrastructureSyncState> stateCaptor =
@@ -114,14 +112,20 @@ class DailyPropertyInfrastructureSyncSchedulerTest {
         verify(syncStateRepository).save(stateCaptor.capture());
         assertThat(stateCaptor.getValue().getPropertyId()).isEqualTo(101L);
         assertThat(stateCaptor.getValue().getLastInfrastructureCount()).isEqualTo(2);
-        assertThat(stateCaptor.getValue().getLastCreatedAccessibilityCount()).isEqualTo(2);
+        assertThat(stateCaptor.getValue().getLastCreatedAccessibilityCount()).isZero();
     }
 
     private Property property(Long propertyId) {
+        return property(propertyId, false, false);
+    }
+
+    private Property property(Long propertyId, boolean nearbyFetched, boolean accessibilityFetched) {
         return Property.builder()
                 .propertyId(propertyId)
                 .latitude(37.2910)
                 .longitude(126.9710)
+                .nearbyInfrastructuresFetched(nearbyFetched)
+                .infraAccessibilitiesFetched(accessibilityFetched)
                 .build();
     }
 }
