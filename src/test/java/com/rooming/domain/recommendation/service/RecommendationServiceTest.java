@@ -15,6 +15,7 @@ import com.rooming.domain.locations.entity.value.SubPath;
 import com.rooming.domain.locations.repository.InfraAccessibilityRepository;
 import com.rooming.domain.locations.repository.InfrastructureRepository;
 import com.rooming.domain.locations.repository.RouteRepository;
+import com.rooming.domain.locations.service.PropertyInfrastructureService;
 import com.rooming.domain.locations.service.RouteGeometryService;
 import com.rooming.domain.property.entity.Property;
 import com.rooming.domain.property.entity.TradeType;
@@ -36,6 +37,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,6 +50,7 @@ class RecommendationServiceTest {
     private final RouteGeometryService routeGeometryService = new RouteGeometryService();
     private final InfraAccessibilityRepository infraAccessibilityRepository = mock(InfraAccessibilityRepository.class);
     private final InfrastructureRepository infrastructureRepository = mock(InfrastructureRepository.class);
+    private final PropertyInfrastructureService propertyInfrastructureService = mock(PropertyInfrastructureService.class);
     private final RecommendationRepository recommendationRepository = mock(RecommendationRepository.class);
     private final RecommendationService recommendationService = new RecommendationService(
             aiRecommendationClient,
@@ -57,6 +60,7 @@ class RecommendationServiceTest {
             routeGeometryService,
             infraAccessibilityRepository,
             infrastructureRepository,
+            propertyInfrastructureService,
             recommendationRepository,
             new ObjectMapper()
     );
@@ -115,6 +119,55 @@ class RecommendationServiceTest {
         );
         verify(aiRecommendationClient).recommend(requestCaptor.capture());
         assertThat(requestCaptor.getValue().seekerId()).isEqualTo(1L);
+        verify(propertyInfrastructureService, never()).storeInfraAccessibilityAsync(any(), any(), any(), any());
+    }
+
+    @Test
+    void recommendFetchesTransientAccessibilityForAiInfrastructureWithoutSavedAccessibility() {
+        Seeker seeker = seekerWithTargetPlace(29L);
+        Property property = property();
+        Route route = route(seeker.getTargetPlaces().iterator().next().getTargetPlace(), property);
+        Infrastructure etcInfrastructure = infrastructure(19L, "AI Place", INFRA_CATEGORY.ETC);
+        InfraAccessibility transientAccessibility = accessibility(
+                property,
+                19L,
+                "AI Place",
+                INFRA_CATEGORY.ETC,
+                6
+        );
+
+        when(seekerRepository.findById(1L)).thenReturn(Optional.of(seeker));
+        when(aiRecommendationClient.recommend(any())).thenReturn(new AiRecommendationDtos.Response(
+                true,
+                "Recommendation completed.",
+                List.of(new AiRecommendationDtos.Result(101L, List.of(19L), "AI selected place."))
+        ));
+        when(propertyRepository.findAllById(List.of(101L))).thenReturn(List.of(property));
+        when(routeRepository.findById(route.getId())).thenReturn(Optional.of(route));
+        when(infraAccessibilityRepository.findAllById(any())).thenReturn(List.of());
+        when(infrastructureRepository.findAllById(List.of(19L))).thenReturn(List.of(etcInfrastructure));
+        when(propertyInfrastructureService.buildTransientInfraAccessibility(property, etcInfrastructure))
+                .thenReturn(Optional.of(transientAccessibility));
+        when(recommendationRepository.saveAll(any())).thenAnswer(invocation -> {
+            List<Recommendation> recommendations = invocation.getArgument(0);
+            ReflectionTestUtils.setField(recommendations.getFirst(), "id", 7002L);
+            return recommendations;
+        });
+
+        RecommendationDtos.Data data = recommendationService.recommend(
+                seeker,
+                new RecommendationDtos.Request("quiet near campus", List.of("quiet"), 1)
+        );
+
+        RecommendationDtos.InfrastructureDetails infrastructure = data.results().getFirst().infrastructures().getFirst();
+        assertThat(infrastructure.infrastructureId()).isEqualTo(19L);
+        assertThat(infrastructure.walkingMinutes()).isEqualTo(6);
+        verify(propertyInfrastructureService).storeInfraAccessibilityAsync(
+                property.getPropertyId(),
+                19L,
+                transientAccessibility.getWalkingTime(),
+                transientAccessibility.getWalkingRouteJson()
+        );
     }
 
     private Seeker seekerWithTargetPlace(Long targetPlaceId) {
@@ -193,6 +246,24 @@ class RecommendationServiceTest {
                 new RoadAddress(infrastructureId + " Infra-ro")
         );
         ReflectionTestUtils.setField(infrastructure, "id", infrastructureId);
-        return new InfraAccessibility(property, infrastructure, new Minutes(walkingMinutes), null);
+        Minutes duration = new Minutes(walkingMinutes);
+        return new InfraAccessibility(
+                property,
+                infrastructure,
+                duration,
+                new Path(duration, 0, List.of(new SubPath(3, duration, "Property", name, null)))
+        );
+    }
+
+    private Infrastructure infrastructure(Long infrastructureId, String name, INFRA_CATEGORY category) {
+        Infrastructure infrastructure = new Infrastructure(
+                name,
+                category,
+                37.2940,
+                126.9740,
+                new RoadAddress(infrastructureId + " Infra-ro")
+        );
+        ReflectionTestUtils.setField(infrastructure, "id", infrastructureId);
+        return infrastructure;
     }
 }

@@ -17,6 +17,7 @@ import org.springframework.web.client.RestClient;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
@@ -163,5 +164,22 @@ class TmapClientContractTest {
         assertThat(candidate.path().getSubPaths()).hasSize(2);
         assertThat(candidate.path().getSubPaths().getFirst().getLaneName()).isEqualTo("Campus Walkway");
         assertThat(candidate.path().getSubPaths().getFirst().getPoints()).hasSize(2);
+    }
+
+    @Test
+    void walkingRouteReportsQuotaExceededOnTmapLimitResponse() {
+        server.expect(requestToUriTemplate(BASE_URL + "/routes/pedestrian?version=1"))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(header("appKey", API_KEY))
+                .andRespond(withStatus(HttpStatus.TOO_MANY_REQUESTS)
+                        .body("quota exceeded")
+                        .contentType(MediaType.TEXT_PLAIN));
+
+        assertThatThrownBy(() -> tmapClient.findWalkingRoute(
+                37.2961,
+                126.9718,
+                37.2945,
+                126.9748
+        )).isInstanceOf(TmapQuotaExceededException.class);
     }
 }

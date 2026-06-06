@@ -2,6 +2,7 @@ package com.rooming.domain.locations.service;
 
 import com.rooming.domain.locations.client.OdsayClient;
 import com.rooming.domain.locations.client.TmapClient;
+import com.rooming.domain.locations.client.TmapQuotaExceededException;
 import com.rooming.domain.locations.dto.OdsayRouteCandidate;
 import com.rooming.domain.locations.entity.model.Route;
 import com.rooming.domain.locations.entity.model.TargetPlace;
@@ -80,12 +81,22 @@ public class TargetPlaceRouteService {
         boolean closeWalkingDistance = distanceKm <= CLOSE_WALKING_ROUTE_THRESHOLD_KM;
 
         if (closeWalkingDistance) {
-            Optional<OdsayRouteCandidate> candidate = tmapClient.findWalkingRoute(
-                    startLatitude,
-                    startLongitude,
-                    endLatitude,
-                    endLongitude
-            );
+            Optional<OdsayRouteCandidate> candidate;
+            try {
+                candidate = tmapClient.findWalkingRoute(
+                        startLatitude,
+                        startLongitude,
+                        endLatitude,
+                        endLongitude
+                );
+            } catch (TmapQuotaExceededException e) {
+                log.warn(
+                        "TMAP walking route quota appears exhausted for targetPlaceId={}, propertyId={}",
+                        targetPlace.getId(),
+                        property.getPropertyId()
+                );
+                return Optional.empty();
+            }
             if (candidate.isEmpty()) {
                 log.warn(
                         "TMAP walking route was not returned for targetPlaceId={}, propertyId={}",

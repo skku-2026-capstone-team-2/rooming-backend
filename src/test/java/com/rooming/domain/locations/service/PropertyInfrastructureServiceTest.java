@@ -1,6 +1,7 @@
 package com.rooming.domain.locations.service;
 
 import com.rooming.domain.locations.client.TmapClient;
+import com.rooming.domain.locations.client.TmapQuotaExceededException;
 import com.rooming.domain.locations.dto.OdsayRouteCandidate;
 import com.rooming.domain.locations.dto.PropertyInfrastructureSyncResult;
 import com.rooming.domain.locations.dto.TmapInfrastructureCandidate;
@@ -28,7 +29,9 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,14 +58,14 @@ class PropertyInfrastructureServiceTest {
         when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
                 .thenReturn(searchResult(List.of(candidate()), Set.of(INFRA_CATEGORY.CONVENIENT_STORE), false));
         when(infrastructureRepository.saveAndFlush(any(Infrastructure.class))).thenReturn(infrastructure);
-        when(infraAccessibilityRepository.existsById(new PropertyInfrastructureId(101L, 77L)))
-                .thenReturn(false);
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.empty());
         when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2912, 126.9712))
                 .thenReturn(Optional.of(routeCandidate()));
         when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        PropertyInfrastructureSyncResult result = propertyInfrastructureService.syncMissingInfrastructure(property);
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
 
         assertThat(result.infrastructureCount()).isEqualTo(1);
         assertThat(result.createdAccessibilityCount()).isEqualTo(1);
@@ -77,25 +80,125 @@ class PropertyInfrastructureServiceTest {
     }
 
     @Test
+    void syncNearbyInfrastructuresStoresPoisWithoutCreatingAccessibilities() {
+        Property property = property();
+        Infrastructure infrastructure = infrastructure(77L);
+        when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
+                .thenReturn(searchResult(List.of(candidate()), Set.of(INFRA_CATEGORY.CONVENIENT_STORE), false));
+        when(infrastructureRepository.saveAndFlush(any(Infrastructure.class))).thenReturn(infrastructure);
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.syncNearbyInfrastructures(property);
+
+        assertThat(result.infrastructureCount()).isEqualTo(1);
+        assertThat(result.createdAccessibilityCount()).isZero();
+        assertThat(result.quotaExceeded()).isFalse();
+        assertThat(property.nearbyInfrastructuresFetched()).isTrue();
+        assertThat(property.infraAccessibilitiesFetched()).isFalse();
+        verify(tmapClient, never()).findWalkingRoute(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
+    void syncMissingAccessibilitiesUsesStoredNearbyInfrastructuresWithoutPoiSearch() {
+        Property property = property();
+        property.markNearbyInfrastructuresFetched(true);
+        Infrastructure infrastructure = infrastructure(77L);
+        when(infrastructureRepository.findNearbyNonEtcWithinMeters(37.2910, 126.9710, 1000.0))
+                .thenReturn(List.of(infrastructure));
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.empty());
+        when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2912, 126.9712))
+                .thenReturn(Optional.of(routeCandidate()));
+        when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.syncMissingAccessibilities(property);
+
+        assertThat(result.infrastructureCount()).isEqualTo(1);
+        assertThat(result.createdAccessibilityCount()).isEqualTo(1);
+        assertThat(property.infraAccessibilitiesFetched()).isTrue();
+        verify(tmapClient, never()).findInfrastructureCandidatesWithQuotaStatus(anyDouble(), anyDouble(), anyInt());
+    }
+
+    @Test
     void syncMissingPropertyStillStoresPartialPoisWhenQuotaIsReached() {
         Property property = property();
         Infrastructure infrastructure = infrastructure(77L);
         when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
                 .thenReturn(searchResult(List.of(candidate()), Set.of(INFRA_CATEGORY.CONVENIENT_STORE), true));
         when(infrastructureRepository.saveAndFlush(any(Infrastructure.class))).thenReturn(infrastructure);
-        when(infraAccessibilityRepository.existsById(new PropertyInfrastructureId(101L, 77L)))
-                .thenReturn(false);
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.empty());
         when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2912, 126.9712))
                 .thenReturn(Optional.of(routeCandidate()));
         when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        PropertyInfrastructureSyncResult result = propertyInfrastructureService.syncMissingInfrastructure(property);
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
 
         assertThat(result.infrastructureCount()).isEqualTo(1);
         assertThat(result.createdAccessibilityCount()).isEqualTo(1);
         assertThat(result.quotaExceeded()).isTrue();
         verify(infraAccessibilityRepository).saveAndFlush(any(InfraAccessibility.class));
+    }
+
+    @Test
+    void syncMissingPropertyReusesExistingInfrastructureByAddressBeforeInsert() {
+        Property property = property();
+        Infrastructure existingInfrastructure = infrastructure(77L);
+        when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
+                .thenReturn(searchResult(List.of(candidate()), Set.of(INFRA_CATEGORY.CONVENIENT_STORE), false));
+        when(infrastructureRepository.findByAddress(new RoadAddress("Test Road 1")))
+                .thenReturn(Optional.of(existingInfrastructure));
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.empty());
+        when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2912, 126.9712))
+                .thenReturn(Optional.of(routeCandidate()));
+        when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
+
+        assertThat(result.infrastructureCount()).isEqualTo(1);
+        assertThat(result.createdAccessibilityCount()).isEqualTo(1);
+        verify(infrastructureRepository, never()).saveAndFlush(any(Infrastructure.class));
+    }
+
+    @Test
+    void syncMissingPropertyRemovesAccessibilityNotSelectedByCurrentPropertyFetch() {
+        Property property = property();
+        Infrastructure oldStore = infrastructure(66L, INFRA_CATEGORY.CONVENIENT_STORE, 37.2920, 126.9720);
+        Infrastructure newStore = infrastructure(77L, INFRA_CATEGORY.CONVENIENT_STORE, 37.2911, 126.9711);
+        InfraAccessibility oldAccessibility = new InfraAccessibility(
+                property,
+                oldStore,
+                new Minutes(5),
+                new Path(new Minutes(5), 0, List.of())
+        );
+
+        when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
+                .thenReturn(searchResult(
+                        List.of(candidate("new-store", INFRA_CATEGORY.CONVENIENT_STORE, 37.2911, 126.9711)),
+                        Set.of(INFRA_CATEGORY.CONVENIENT_STORE),
+                        false
+        ));
+        when(infrastructureRepository.saveAndFlush(any(Infrastructure.class))).thenReturn(newStore);
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.empty());
+        when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2911, 126.9711))
+                .thenReturn(Optional.of(routeCandidate()));
+        when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(infraAccessibilityRepository.findAllByPropertyPropertyId(101L))
+                .thenReturn(List.of(oldAccessibility));
+        when(infraAccessibilityRepository.countByIdInfrastructureId(66L)).thenReturn(0L);
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
+
+        assertThat(result.infrastructureCount()).isEqualTo(1);
+        assertThat(result.createdAccessibilityCount()).isEqualTo(1);
+        assertThat(result.removedAccessibilityCount()).isEqualTo(1);
+        verify(infraAccessibilityRepository).deleteAll(List.of(oldAccessibility));
+        verify(infrastructureRepository).deleteById(66L);
     }
 
     @Test
@@ -115,14 +218,14 @@ class PropertyInfrastructureServiceTest {
                 ), Set.of(INFRA_CATEGORY.CONVENIENT_STORE, INFRA_CATEGORY.PHARMACY), true));
         when(infrastructureRepository.saveAndFlush(any(Infrastructure.class)))
                 .thenReturn(store1, store2, store3, pharmacy);
-        when(infraAccessibilityRepository.existsById(any(PropertyInfrastructureId.class)))
-                .thenReturn(false);
+        when(infraAccessibilityRepository.findById(any(PropertyInfrastructureId.class)))
+                .thenReturn(Optional.empty());
         when(tmapClient.findWalkingRoute(anyDouble(), anyDouble(), anyDouble(), anyDouble()))
                 .thenReturn(Optional.of(routeCandidate()));
         when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        PropertyInfrastructureSyncResult result = propertyInfrastructureService.syncMissingInfrastructure(property);
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
 
         assertThat(result.infrastructureCount()).isEqualTo(3);
         assertThat(result.createdAccessibilityCount()).isEqualTo(3);
@@ -134,6 +237,70 @@ class PropertyInfrastructureServiceTest {
         assertThat(accessibilityCaptor.getAllValues())
                 .extracting(accessibility -> accessibility.getId().getInfrastructureId())
                 .containsExactly(77L, 78L, 91L);
+    }
+
+    @Test
+    void syncMissingPropertyRepairsExistingAccessibilityWithNullWalkingRouteJson() {
+        Property property = property();
+        Infrastructure infrastructure = infrastructure(77L);
+        Minutes oldDuration = new Minutes(9);
+        InfraAccessibility existingAccessibility = new InfraAccessibility(
+                property,
+                infrastructure,
+                oldDuration,
+                new Path(oldDuration, 0, List.of(new SubPath(3, oldDuration, "Property", "Infra", null)))
+        );
+        ReflectionTestUtils.setField(existingAccessibility, "walkingRouteJson", null);
+
+        when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
+                .thenReturn(searchResult(List.of(candidate()), Set.of(INFRA_CATEGORY.CONVENIENT_STORE), false));
+        when(infrastructureRepository.saveAndFlush(any(Infrastructure.class))).thenReturn(infrastructure);
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.of(existingAccessibility));
+        when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2912, 126.9712))
+                .thenReturn(Optional.of(routeCandidate()));
+        when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
+
+        assertThat(result.infrastructureCount()).isEqualTo(1);
+        assertThat(result.createdAccessibilityCount()).isZero();
+        assertThat(existingAccessibility.getWalkingTime().getValue()).isEqualTo(3);
+        assertThat(existingAccessibility.getWalkingRouteJson()).isNotNull();
+        verify(infraAccessibilityRepository).saveAndFlush(existingAccessibility);
+    }
+
+    @Test
+    void syncMissingPropertyStopsAfterPersistedAccessibilitiesWhenWalkingRouteQuotaIsReached() {
+        Property property = property();
+        Infrastructure store1 = infrastructure(77L, INFRA_CATEGORY.CONVENIENT_STORE, 37.2911, 126.9711);
+        Infrastructure store2 = infrastructure(78L, INFRA_CATEGORY.CONVENIENT_STORE, 37.2912, 126.9712);
+
+        when(tmapClient.findInfrastructureCandidatesWithQuotaStatus(37.2910, 126.9710, 1))
+                .thenReturn(searchResult(List.of(
+                        candidate("store-1", INFRA_CATEGORY.CONVENIENT_STORE, 37.2911, 126.9711),
+                        candidate("store-2", INFRA_CATEGORY.CONVENIENT_STORE, 37.2912, 126.9712)
+                ), Set.of(INFRA_CATEGORY.CONVENIENT_STORE), false));
+        when(infrastructureRepository.saveAndFlush(any(Infrastructure.class)))
+                .thenReturn(store1, store2);
+        when(infraAccessibilityRepository.findById(any(PropertyInfrastructureId.class)))
+                .thenReturn(Optional.empty());
+        when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2911, 126.9711))
+                .thenReturn(Optional.of(routeCandidate()));
+        when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2912, 126.9712))
+                .thenThrow(new TmapQuotaExceededException("quota exceeded"));
+        when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.refreshInfrastructureSelection(property);
+
+        assertThat(result.infrastructureCount()).isEqualTo(2);
+        assertThat(result.createdAccessibilityCount()).isEqualTo(1);
+        assertThat(result.removedAccessibilityCount()).isZero();
+        assertThat(result.quotaExceeded()).isTrue();
+        verify(infraAccessibilityRepository).saveAndFlush(any(InfraAccessibility.class));
+        verify(infraAccessibilityRepository, never()).deleteAll(any());
     }
 
     @Test
@@ -153,10 +320,10 @@ class PropertyInfrastructureServiceTest {
                         List.of(candidate("new-store", INFRA_CATEGORY.CONVENIENT_STORE, 37.2911, 126.9711)),
                         Set.of(INFRA_CATEGORY.CONVENIENT_STORE),
                         false
-                ));
+        ));
         when(infrastructureRepository.saveAndFlush(any(Infrastructure.class))).thenReturn(newStore);
-        when(infraAccessibilityRepository.existsById(new PropertyInfrastructureId(101L, 77L)))
-                .thenReturn(false);
+        when(infraAccessibilityRepository.findById(new PropertyInfrastructureId(101L, 77L)))
+                .thenReturn(Optional.empty());
         when(tmapClient.findWalkingRoute(37.2910, 126.9710, 37.2911, 126.9711))
                 .thenReturn(Optional.of(routeCandidate()));
         when(infraAccessibilityRepository.saveAndFlush(any(InfraAccessibility.class)))

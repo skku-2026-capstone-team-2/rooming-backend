@@ -44,14 +44,31 @@ public class InfraAccessibility {
         if (infrastructure == null || infrastructure.getId() == null) {
             throw new IllegalArgumentException("Infrastructure must be saved before creating infrastructure accessibility.");
         }
-        if (walkingTime == null) {
-               throw new IllegalArgumentException("Walking time must not be null.");
-        }
+        validateWalkingRoute(walkingTime, walkingRouteJson);
 
         this.property = property;
         this.infrastructure = infrastructure;
         this.id = new PropertyInfrastructureId(property.getPropertyId(), infrastructure.getId());
         this.walkingTime = walkingTime;
         this.walkingRouteJson = walkingRouteJson;
+    }
+
+    public boolean hasWalkingRouteJson() {
+        return walkingRouteJson != null;
+    }
+
+    public void updateWalkingRoute(Minutes walkingTime, Path walkingRouteJson) {
+        validateWalkingRoute(walkingTime, walkingRouteJson);
+        this.walkingTime = walkingTime;
+        this.walkingRouteJson = walkingRouteJson;
+    }
+
+    private void validateWalkingRoute(Minutes walkingTime, Path walkingRouteJson) {
+        if (walkingTime == null) {
+            throw new IllegalArgumentException("Walking time must not be null.");
+        }
+        if (walkingRouteJson == null) {
+            throw new IllegalArgumentException("Walking route json must not be null.");
+        }
     }
 }
