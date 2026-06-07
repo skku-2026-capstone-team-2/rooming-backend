@@ -71,6 +71,8 @@ class PropertyInfrastructureServiceTest {
         assertThat(result.createdAccessibilityCount()).isEqualTo(1);
         assertThat(result.removedAccessibilityCount()).isZero();
         assertThat(result.quotaExceeded()).isFalse();
+        assertThat(result.poiQuotaExceeded()).isFalse();
+        assertThat(result.walkingRouteQuotaExceeded()).isFalse();
 
         ArgumentCaptor<InfraAccessibility> accessibilityCaptor =
                 ArgumentCaptor.forClass(InfraAccessibility.class);
@@ -92,6 +94,8 @@ class PropertyInfrastructureServiceTest {
         assertThat(result.infrastructureCount()).isEqualTo(1);
         assertThat(result.createdAccessibilityCount()).isZero();
         assertThat(result.quotaExceeded()).isFalse();
+        assertThat(result.poiQuotaExceeded()).isFalse();
+        assertThat(result.walkingRouteQuotaExceeded()).isFalse();
         assertThat(property.nearbyInfrastructuresFetched()).isTrue();
         assertThat(property.infraAccessibilitiesFetched()).isFalse();
         verify(tmapClient, never()).findWalkingRoute(anyDouble(), anyDouble(), anyDouble(), anyDouble());
@@ -120,6 +124,23 @@ class PropertyInfrastructureServiceTest {
     }
 
     @Test
+    void syncMissingAccessibilitiesDoesNotCompleteWhenPoiWasNotFetchedAndNoStoredInfrastructureExists() {
+        Property property = property();
+        when(infrastructureRepository.findNearbyNonEtcWithinMeters(37.2910, 126.9710, 1000.0))
+                .thenReturn(List.of());
+
+        PropertyInfrastructureSyncResult result = propertyInfrastructureService.syncMissingAccessibilities(property);
+
+        assertThat(result.infrastructureCount()).isZero();
+        assertThat(result.createdAccessibilityCount()).isZero();
+        assertThat(result.quotaExceeded()).isFalse();
+        assertThat(property.nearbyInfrastructuresFetched()).isFalse();
+        assertThat(property.infraAccessibilitiesFetched()).isFalse();
+        verify(tmapClient, never()).findInfrastructureCandidatesWithQuotaStatus(anyDouble(), anyDouble(), anyInt());
+        verify(tmapClient, never()).findWalkingRoute(anyDouble(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test
     void syncMissingPropertyStillStoresPartialPoisWhenQuotaIsReached() {
         Property property = property();
         Infrastructure infrastructure = infrastructure(77L);
@@ -138,6 +159,8 @@ class PropertyInfrastructureServiceTest {
         assertThat(result.infrastructureCount()).isEqualTo(1);
         assertThat(result.createdAccessibilityCount()).isEqualTo(1);
         assertThat(result.quotaExceeded()).isTrue();
+        assertThat(result.poiQuotaExceeded()).isTrue();
+        assertThat(result.walkingRouteQuotaExceeded()).isFalse();
         verify(infraAccessibilityRepository).saveAndFlush(any(InfraAccessibility.class));
     }
 
@@ -299,6 +322,8 @@ class PropertyInfrastructureServiceTest {
         assertThat(result.createdAccessibilityCount()).isEqualTo(1);
         assertThat(result.removedAccessibilityCount()).isZero();
         assertThat(result.quotaExceeded()).isTrue();
+        assertThat(result.poiQuotaExceeded()).isFalse();
+        assertThat(result.walkingRouteQuotaExceeded()).isTrue();
         verify(infraAccessibilityRepository).saveAndFlush(any(InfraAccessibility.class));
         verify(infraAccessibilityRepository, never()).deleteAll(any());
     }

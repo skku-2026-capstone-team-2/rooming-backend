@@ -4,6 +4,10 @@ public record PropertyInfrastructureSyncResult(
         int infrastructureCount,
         int createdAccessibilityCount,
         int removedAccessibilityCount,
-        boolean quotaExceeded
+        boolean poiQuotaExceeded,
+        boolean walkingRouteQuotaExceeded
 ) {
+    public boolean quotaExceeded() {
+        return poiQuotaExceeded || walkingRouteQuotaExceeded;
+    }
 }

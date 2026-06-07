@@ -117,7 +117,8 @@ public class PropertyInfrastructureService {
                 storedInfrastructures.size(),
                 0,
                 0,
-                searchResult.quotaExceeded()
+                searchResult.quotaExceeded(),
+                false
         );
     }
 
@@ -171,7 +172,7 @@ public class PropertyInfrastructureService {
                 property,
                 selectedInfrastructures
         );
-        int removedAccessibilityCount = accessibilityStoreOperation.quotaExceeded()
+        int removedAccessibilityCount = accessibilityStoreOperation.walkingRouteQuotaExceeded()
                 ? 0
                 : refreshSelection
                 ? removeObsoleteAccessibilities(
@@ -181,18 +182,24 @@ public class PropertyInfrastructureService {
                 )
                 : 0;
 
-        boolean quotaExceeded = searchResult.quotaExceeded() || accessibilityStoreOperation.quotaExceeded();
         if (fetchPoisFromTmap) {
             property.markNearbyInfrastructuresFetched(!searchResult.quotaExceeded());
         }
-        property.markInfraAccessibilitiesFetched(!quotaExceeded && !accessibilityStoreOperation.incomplete());
+        boolean accessibilitiesFetched = !searchResult.quotaExceeded()
+                && !accessibilityStoreOperation.walkingRouteQuotaExceeded()
+                && !accessibilityStoreOperation.incomplete()
+                && (fetchPoisFromTmap
+                || property.nearbyInfrastructuresFetched()
+                || !selectedInfrastructures.isEmpty());
+        property.markInfraAccessibilitiesFetched(accessibilitiesFetched);
         propertyRepository.save(property);
 
         return new SyncOperation(
                 selectedInfrastructures.size(),
                 accessibilityStoreOperation.createdAccessibilities(),
                 removedAccessibilityCount,
-                quotaExceeded
+                searchResult.quotaExceeded(),
+                accessibilityStoreOperation.walkingRouteQuotaExceeded()
         );
     }
 
@@ -663,21 +670,23 @@ public class PropertyInfrastructureService {
             int infrastructureCount,
             List<InfraAccessibility> createdAccessibilities,
             int removedAccessibilityCount,
-            boolean quotaExceeded
+            boolean poiQuotaExceeded,
+            boolean walkingRouteQuotaExceeded
     ) {
         private PropertyInfrastructureSyncResult toResult() {
             return new PropertyInfrastructureSyncResult(
                     infrastructureCount,
                     createdAccessibilities.size(),
                     removedAccessibilityCount,
-                    quotaExceeded
+                    poiQuotaExceeded,
+                    walkingRouteQuotaExceeded
             );
         }
     }
 
     private record AccessibilityStoreOperation(
             List<InfraAccessibility> createdAccessibilities,
-            boolean quotaExceeded,
+            boolean walkingRouteQuotaExceeded,
             boolean incomplete
     ) {
     }

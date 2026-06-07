@@ -14,6 +14,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
@@ -24,7 +26,7 @@ public class DailyPropertyInfrastructureSyncScheduler {
     private final PropertyRepository propertyRepository;
     private final PropertyInfrastructureService propertyInfrastructureService;
     private final PropertyInfrastructureSyncStateRepository syncStateRepository;
-    private final TmapPoiSyncQuotaService quotaService;
+    private final TmapPoiSyncQuotaService poiQuotaService;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
     @Value("${rooming.infrastructure-sync.daily.enabled:true}")
@@ -34,63 +36,204 @@ public class DailyPropertyInfrastructureSyncScheduler {
             cron = "${rooming.infrastructure-sync.daily.cron:0 0 3 * * *}",
             zone = "Asia/Seoul"
     )
-    @EventListener(ApplicationReadyEvent.class)
     public void syncAllPropertyInfrastructures() {
+        runSync("scheduled");
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void syncAllPropertyInfrastructuresOnStartup() {
+        runSync("application-ready");
+    }
+
+    private void runSync(String trigger) {
         if (!running.compareAndSet(false, true)) {
+            log.info(
+                    "Skipping daily property infrastructure sync because another run is already active. trigger={}",
+                    trigger
+            );
             return;
         }
 
+        long startedNanos = System.nanoTime();
+        log.info("Starting daily property infrastructure sync. trigger={}", trigger);
         try {
-            syncAllPropertyInfrastructuresIfAllowed();
+            SyncRunStats stats = syncAllPropertyInfrastructuresIfAllowed(trigger);
+            log.info(
+                    "Finished daily property infrastructure sync. trigger={}, status={}, propertiesFound={}, "
+                            + "poiProcessed={}, accessibilityProcessed={}, succeeded={}, failed={}, "
+                            + "poiQuotaExceeded={}, walkingRouteQuotaExceeded={}, totalInfrastructures={}, "
+                            + "createdAccessibilities={}, removedAccessibilities={}, elapsedMs={}",
+                    trigger,
+                    stats.status,
+                    stats.propertiesFound,
+                    stats.poiProcessedCount,
+                    stats.accessibilityProcessedCount,
+                    stats.successCount,
+                    stats.failureCount,
+                    stats.poiQuotaExceeded,
+                    stats.walkingRouteQuotaExceeded,
+                    stats.totalInfrastructureCount,
+                    stats.totalCreatedAccessibilityCount,
+                    stats.totalRemovedAccessibilityCount,
+                    elapsedMillis(startedNanos)
+            );
+        } catch (RuntimeException e) {
+            log.error(
+                    "Daily property infrastructure sync aborted. trigger={}, elapsedMs={}",
+                    trigger,
+                    elapsedMillis(startedNanos),
+                    e
+            );
+            throw e;
         } finally {
             running.set(false);
         }
     }
 
-    private void syncAllPropertyInfrastructuresIfAllowed() {
-        if (!enabled || quotaService.isQuotaExhaustedToday()) {
-            return;
+    private SyncRunStats syncAllPropertyInfrastructuresIfAllowed(String trigger) {
+        if (!enabled) {
+            log.info("Skipping daily property infrastructure sync because it is disabled. trigger={}", trigger);
+            return SyncRunStats.skipped(SyncRunStatus.SKIPPED_DISABLED);
         }
 
-        for (Property property : propertyRepository.findPropertiesForDailyInfrastructureSync()) {
+        List<Property> properties = propertyRepository.findPropertiesForDailyInfrastructureSync();
+        SyncRunStats stats = new SyncRunStats(properties.size());
+        log.info(
+                "Loaded properties for daily infrastructure sync. trigger={}, propertyCount={}",
+                trigger,
+                properties.size()
+        );
+
+        boolean poiQuotaAlreadyExceeded = poiQuotaService.isQuotaExhaustedToday();
+        if (poiQuotaAlreadyExceeded) {
+            stats.markPoiQuotaExceeded();
+            log.info(
+                    "Skipping TMAP POI phase because POI quota is already exhausted today. "
+                            + "Accessibility phase will still run from stored infrastructures. trigger={}",
+                    trigger
+            );
+        } else {
+            runPoiPhase(trigger, properties, stats);
+        }
+
+        runAccessibilityPhase(trigger, properties, stats);
+        return stats;
+    }
+
+    private void runPoiPhase(String trigger, List<Property> properties, SyncRunStats stats) {
+        log.info("Starting TMAP POI infrastructure sync phase. trigger={}, propertyCount={}", trigger, properties.size());
+        for (Property property : properties) {
             PropertyInfrastructureSyncState state = syncState(property);
             Instant now = Instant.now();
-            SyncMode syncMode = syncMode(property);
+            stats.poiProcessedCount++;
 
             try {
-                PropertyInfrastructureSyncResult result = switch (syncMode) {
-                    case NEARBY_INFRASTRUCTURE ->
-                            propertyInfrastructureService.syncNearbyInfrastructures(property);
-                    case INFRA_ACCESSIBILITY ->
-                            propertyInfrastructureService.syncMissingAccessibilities(property);
-                    case REFRESH ->
-                            propertyInfrastructureService.refreshInfrastructureSelection(property);
-                };
-                recordSuccess(state, now, result, syncMode);
+                PropertyInfrastructureSyncResult result =
+                        propertyInfrastructureService.syncNearbyInfrastructures(property);
+                recordSuccess(state, now, result);
+                stats.recordSuccess(result);
+                log.info(
+                        "Synced property infrastructures from TMAP POI. trigger={}, propertyId={}, "
+                                + "infrastructures={}, poiQuotaExceeded={}",
+                        trigger,
+                        property.getPropertyId(),
+                        result.infrastructureCount(),
+                        result.poiQuotaExceeded()
+                );
 
-                if (result.quotaExceeded()) {
+                if (result.poiQuotaExceeded()) {
                     state.recordQuotaStopped(
                             now,
                             result.infrastructureCount(),
                             result.createdAccessibilityCount()
                     );
                     syncStateRepository.save(state);
-                    quotaService.markQuotaExhaustedNow();
+                    poiQuotaService.markQuotaExhaustedNow();
+                    stats.markPoiQuotaExceeded();
                     log.warn(
-                            "Stopped daily infrastructure sync because TMAP POI quota appears exhausted. propertyId={}",
-                            property.getPropertyId()
+                            "Stopping TMAP POI infrastructure sync phase because POI quota appears exhausted. "
+                                    + "Accessibility phase will still run from stored infrastructures. "
+                                    + "trigger={}, propertyId={}, processed={}, remaining={}",
+                            trigger,
+                            property.getPropertyId(),
+                            stats.poiProcessedCount,
+                            properties.size() - stats.poiProcessedCount
                     );
-                    break;
+                    return;
                 }
 
                 syncStateRepository.save(state);
             } catch (RuntimeException e) {
+                stats.recordFailure();
                 state.recordFailure(now);
                 syncStateRepository.save(state);
                 log.warn(
-                        "Daily infrastructure sync failed for propertyId={}: {}",
+                        "TMAP POI infrastructure sync failed for propertyId={}, trigger={}: {}",
                         property.getPropertyId(),
-                        e.getMessage()
+                        trigger,
+                        e.getMessage(),
+                        e
+                );
+            }
+        }
+    }
+
+    private void runAccessibilityPhase(String trigger, List<Property> properties, SyncRunStats stats) {
+        log.info(
+                "Starting infra accessibility sync phase. trigger={}, propertyCount={}",
+                trigger,
+                properties.size()
+        );
+        for (Property property : properties) {
+            PropertyInfrastructureSyncState state = syncState(property);
+            Instant now = Instant.now();
+            stats.accessibilityProcessedCount++;
+
+            try {
+                PropertyInfrastructureSyncResult result =
+                        propertyInfrastructureService.syncMissingAccessibilities(property);
+                recordSuccess(state, now, result);
+                stats.recordSuccess(result);
+                log.info(
+                        "Synced property infra accessibilities. trigger={}, propertyId={}, infrastructures={}, "
+                                + "createdAccessibilities={}, walkingRouteQuotaExceeded={}",
+                        trigger,
+                        property.getPropertyId(),
+                        result.infrastructureCount(),
+                        result.createdAccessibilityCount(),
+                        result.walkingRouteQuotaExceeded()
+                );
+
+                if (result.walkingRouteQuotaExceeded()) {
+                    state.recordQuotaStopped(
+                            now,
+                            result.infrastructureCount(),
+                            result.createdAccessibilityCount()
+                    );
+                    syncStateRepository.save(state);
+                    stats.markWalkingRouteQuotaExceeded();
+                    log.warn(
+                            "Stopping infra accessibility sync phase because TMAP walking route quota appears "
+                                    + "exhausted. trigger={}, propertyId={}, processed={}, remaining={}",
+                            trigger,
+                            property.getPropertyId(),
+                            stats.accessibilityProcessedCount,
+                            properties.size() - stats.accessibilityProcessedCount
+                    );
+                    return;
+                }
+
+                syncStateRepository.save(state);
+            } catch (RuntimeException e) {
+                stats.recordFailure();
+                state.recordFailure(now);
+                syncStateRepository.save(state);
+                log.warn(
+                        "Infra accessibility sync failed for propertyId={}, trigger={}: {}",
+                        property.getPropertyId(),
+                        trigger,
+                        e.getMessage(),
+                        e
                 );
             }
         }
@@ -99,23 +242,12 @@ public class DailyPropertyInfrastructureSyncScheduler {
     private void recordSuccess(
             PropertyInfrastructureSyncState state,
             Instant now,
-            PropertyInfrastructureSyncResult result,
-            SyncMode syncMode
+            PropertyInfrastructureSyncResult result
     ) {
-        if (syncMode != SyncMode.REFRESH) {
-            state.recordMissingSync(
-                    now,
-                    result.infrastructureCount(),
-                    result.createdAccessibilityCount()
-            );
-            return;
-        }
-
-        state.recordRefresh(
+        state.recordMissingSync(
                 now,
                 result.infrastructureCount(),
-                result.createdAccessibilityCount(),
-                result.removedAccessibilityCount()
+                result.createdAccessibilityCount()
         );
     }
 
@@ -124,19 +256,62 @@ public class DailyPropertyInfrastructureSyncScheduler {
                 .orElseGet(() -> new PropertyInfrastructureSyncState(property.getPropertyId()));
     }
 
-    private SyncMode syncMode(Property property) {
-        if (!property.nearbyInfrastructuresFetched()) {
-            return SyncMode.NEARBY_INFRASTRUCTURE;
-        }
-        if (!property.infraAccessibilitiesFetched()) {
-            return SyncMode.INFRA_ACCESSIBILITY;
-        }
-        return SyncMode.REFRESH;
+    private enum SyncRunStatus {
+        COMPLETED,
+        COMPLETED_WITH_FAILURES,
+        QUOTA_LIMITED,
+        SKIPPED_DISABLED
     }
 
-    private enum SyncMode {
-        NEARBY_INFRASTRUCTURE,
-        INFRA_ACCESSIBILITY,
-        REFRESH
+    private static final class SyncRunStats {
+        private SyncRunStatus status = SyncRunStatus.COMPLETED;
+        private final int propertiesFound;
+        private int poiProcessedCount;
+        private int accessibilityProcessedCount;
+        private int successCount;
+        private int failureCount;
+        private int totalInfrastructureCount;
+        private int totalCreatedAccessibilityCount;
+        private int totalRemovedAccessibilityCount;
+        private boolean poiQuotaExceeded;
+        private boolean walkingRouteQuotaExceeded;
+
+        private SyncRunStats(int propertiesFound) {
+            this.propertiesFound = propertiesFound;
+        }
+
+        private static SyncRunStats skipped(SyncRunStatus status) {
+            SyncRunStats stats = new SyncRunStats(0);
+            stats.status = status;
+            return stats;
+        }
+
+        private void recordSuccess(PropertyInfrastructureSyncResult result) {
+            successCount++;
+            totalInfrastructureCount += Math.max(0, result.infrastructureCount());
+            totalCreatedAccessibilityCount += Math.max(0, result.createdAccessibilityCount());
+            totalRemovedAccessibilityCount += Math.max(0, result.removedAccessibilityCount());
+        }
+
+        private void recordFailure() {
+            failureCount++;
+            if (status == SyncRunStatus.COMPLETED) {
+                status = SyncRunStatus.COMPLETED_WITH_FAILURES;
+            }
+        }
+
+        private void markPoiQuotaExceeded() {
+            poiQuotaExceeded = true;
+            status = SyncRunStatus.QUOTA_LIMITED;
+        }
+
+        private void markWalkingRouteQuotaExceeded() {
+            walkingRouteQuotaExceeded = true;
+            status = SyncRunStatus.QUOTA_LIMITED;
+        }
+    }
+
+    private long elapsedMillis(long startedNanos) {
+        return TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startedNanos);
     }
 }
