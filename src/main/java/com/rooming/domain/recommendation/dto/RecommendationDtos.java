@@ -75,6 +75,7 @@ public final class RecommendationDtos {
     }
 
     public record PropertyDetails(
+            String title,
             CoordinateDto location,
             TradeType tradeType,
             Integer depositAmount,

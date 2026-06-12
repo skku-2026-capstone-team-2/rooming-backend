@@ -97,6 +97,7 @@ class RecommendationServiceTest {
 
         RecommendationDtos.Result result = data.results().getFirst();
         assertThat(result.recommendationId()).isEqualTo(7001L);
+        assertThat(result.property().title()).isEqualTo("Campus-side one-room 3F");
         assertThat(result.property().location().latitude()).isEqualTo(37.2945);
         assertThat(result.property().tradeType()).isEqualTo(TradeType.MONTHLY_RENT);
         assertThat(result.property().depositAmount()).isEqualTo(500);
@@ -206,6 +207,7 @@ class RecommendationServiceTest {
     private Property property() {
         return Property.builder()
                 .propertyId(101L)
+                .title("Campus-side one-room 3F")
                 .latitude(37.2945)
                 .longitude(126.9748)
                 .tradeType(TradeType.MONTHLY_RENT)

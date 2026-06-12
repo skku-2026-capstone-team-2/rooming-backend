@@ -85,6 +85,7 @@ class RecommendationControllerTraceTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.results[0].recommendationId").value(7001))
                 .andExpect(jsonPath("$.data.results[0].propertyId").value(101))
+                .andExpect(jsonPath("$.data.results[0].property.title").value("Campus-side one-room 3F"))
                 .andExpect(jsonPath("$.data.results[0].property.location.latitude").value(37.2945))
                 .andExpect(jsonPath("$.data.results[0].property.tradeType").value("MONTHLY_RENT"))
                 .andExpect(jsonPath("$.data.results[0].property.depositAmount").value(500))
@@ -149,6 +150,7 @@ class RecommendationControllerTraceTest {
                         101L,
                         false,
                         new RecommendationDtos.PropertyDetails(
+                                "Campus-side one-room 3F",
                                 new CoordinateDto(37.2945, 126.9748),
                                 TradeType.MONTHLY_RENT,
                                 500,
