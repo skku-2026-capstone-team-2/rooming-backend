@@ -229,9 +229,7 @@ public class RecommendationService {
         RecommendationDtos.Result snapshot = snapshot(recommendation);
         List<Long> infrastructureIds = infrastructureIds(recommendation, snapshot);
         Property property = recommendation.getProperty();
-        RecommendationDtos.PropertyDetails propertyDetails = snapshot.property() == null
-                ? propertyDetails(property)
-                : snapshot.property();
+        RecommendationDtos.PropertyDetails propertyDetails = propertyDetails(property, snapshot.property());
         RecommendationDtos.TargetPlaceRoute firstTargetPlaceRoute =
                 firstTargetPlaceRoute(recommendation, snapshot);
         List<RecommendationDtos.InfrastructureDetails> infrastructures = normalizedInfrastructures(
@@ -273,6 +271,7 @@ public class RecommendationService {
 
     private RecommendationDtos.PropertyDetails propertyDetails(Property property) {
         return new RecommendationDtos.PropertyDetails(
+                property.getTitle(),
                 coordinate(property),
                 property.getTradeType(),
                 property.getDeposit(),
@@ -280,6 +279,28 @@ public class RecommendationService {
                 property.getMaintenanceFee(),
                 property.getDescription(),
                 property.getTags() == null ? List.of() : property.getTags()
+        );
+    }
+
+    private RecommendationDtos.PropertyDetails propertyDetails(
+            Property property,
+            RecommendationDtos.PropertyDetails snapshot
+    ) {
+        if (snapshot == null) {
+            return propertyDetails(property);
+        }
+        if (snapshot.title() != null || property == null) {
+            return snapshot;
+        }
+        return new RecommendationDtos.PropertyDetails(
+                property.getTitle(),
+                snapshot.location(),
+                snapshot.tradeType(),
+                snapshot.depositAmount(),
+                snapshot.monthlyRent(),
+                snapshot.maintenanceFee(),
+                snapshot.description(),
+                snapshot.tags()
         );
     }
 

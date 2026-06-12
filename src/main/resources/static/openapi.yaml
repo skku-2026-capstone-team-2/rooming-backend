@@ -1604,6 +1604,7 @@ components:
               propertyId: 101
               favorite: false
               property:
+                title: Campus-side one-room 3F
                 location:
                   latitude: 37.2945
                   longitude: 126.9748
@@ -1680,6 +1681,7 @@ components:
               propertyId: 101
               favorite: true
               property:
+                title: Campus-side one-room 3F
                 location:
                   latitude: 37.2945
                   longitude: 126.9748
@@ -1727,6 +1729,7 @@ components:
               propertyId: 101
               favorite: true
               property:
+                title: Campus-side one-room 3F
                 location:
                   latitude: 37.2945
                   longitude: 126.9748
@@ -1876,6 +1879,10 @@ components:
       type: object
       required: [location, tradeType, depositAmount, monthlyRent, maintenanceFee]
       properties:
+        title:
+          type: string
+          nullable: true
+          example: Campus-side one-room 3F
         location:
           nullable: true
           allOf:
