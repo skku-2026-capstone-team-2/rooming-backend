@@ -10,6 +10,7 @@ import com.rooming.domain.locations.entity.id.TargetPlacePropertyId;
 import com.rooming.domain.locations.entity.type.TRANSPORT_MODE;
 import com.rooming.domain.locations.repository.NearbyPropertyQueryRepository;
 import com.rooming.domain.locations.repository.RouteRepository;
+import com.rooming.domain.locations.repository.TargetPlaceRepository;
 import com.rooming.domain.property.entity.Property;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,11 +28,13 @@ import java.util.Optional;
 public class TargetPlaceRouteService {
 
     private static final double CLOSE_WALKING_ROUTE_THRESHOLD_KM = 0.7;
+    private static final double ROUTE_RADIUS_METERS = 5_000.0;
     private static final double EARTH_RADIUS_KM = 6_371.0;
 
     private final TmapClient tmapClient;
     private final OdsayClient odsayClient;
     private final NearbyPropertyQueryRepository nearbyPropertyQueryRepository;
+    private final TargetPlaceRepository targetPlaceRepository;
     private final RouteRepository routeRepository;
 
     @Transactional(readOnly = true)
@@ -61,6 +64,33 @@ public class TargetPlaceRouteService {
                         new TargetPlacePropertyId(targetPlace.getId(), property.getPropertyId())
                 ))
                 .map(property -> buildRoute(targetPlace, property))
+                .flatMap(Optional::stream)
+                .sorted(Comparator.comparingInt(route -> route.getDurationMinutes().getValue()))
+                .toList();
+
+        if (routes.isEmpty()) {
+            return List.of();
+        }
+
+        return routeRepository.saveAllAndFlush(routes);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<Route> storeMissingRoutesToTargetPlacesWithinFiveKilometers(Property property) {
+        validateStoredProperty(property);
+
+        List<TargetPlace> nearbyTargetPlaces = targetPlaceRepository.findWithinMeters(
+                property.getLatitude(),
+                property.getLongitude(),
+                ROUTE_RADIUS_METERS
+        );
+
+        List<Route> routes = nearbyTargetPlaces.stream()
+                .filter(targetPlace -> targetPlace.getId() != null)
+                .filter(targetPlace -> !routeRepository.existsById(
+                        new TargetPlacePropertyId(targetPlace.getId(), property.getPropertyId())
+                ))
+                .map(targetPlace -> buildRoute(targetPlace, property))
                 .flatMap(Optional::stream)
                 .sorted(Comparator.comparingInt(route -> route.getDurationMinutes().getValue()))
                 .toList();
@@ -153,5 +183,14 @@ public class TargetPlaceRouteService {
                 candidate.duration(),
                 candidate.path()
         );
+    }
+
+    private void validateStoredProperty(Property property) {
+        if (property == null || property.getPropertyId() == null) {
+            throw new IllegalArgumentException("Save Property before storing Route entities.");
+        }
+        if (property.getLatitude() == null || property.getLongitude() == null) {
+            throw new IllegalArgumentException("Property location is required before storing Route entities.");
+        }
     }
 }
