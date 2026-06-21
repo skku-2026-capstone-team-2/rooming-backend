@@ -10,6 +10,7 @@ import com.rooming.domain.broker.repository.BrokerPropertyRepository;
 import com.rooming.domain.broker.repository.BrokerRepository;
 import com.rooming.domain.locations.dto.CoordinateDto;
 import com.rooming.domain.locations.service.PropertyInfrastructureService;
+import com.rooming.domain.locations.service.PropertyRouteSyncService;
 import com.rooming.domain.property.entity.Property;
 import com.rooming.domain.property.entity.TradeType;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +29,7 @@ public class BrokerPropertyService {
     private final BrokerPropertyRepository brokerPropertyRepository;
     private final BrokerRepository brokerRepository;
     private final PropertyInfrastructureService propertyInfrastructureService;
+    private final PropertyRouteSyncService propertyRouteSyncService;
 
     @Transactional(readOnly = true)
     public List<BrokerPropertySummaryData> getMyPropertySummaries(Broker broker) {
@@ -71,26 +73,31 @@ public class BrokerPropertyService {
 
         managedBroker.addProperty(property);
         Property savedProperty = brokerPropertyRepository.save(property);
-        storeInfrastructureAccessibilitiesAfterCommit(savedProperty.getPropertyId());
+        storePropertyLocationDataAfterCommit(savedProperty.getPropertyId());
 
         return toData(savedProperty);
     }
 
-    private void storeInfrastructureAccessibilitiesAfterCommit(Long propertyId) {
+    private void storePropertyLocationDataAfterCommit(Long propertyId) {
         if (propertyId == null) {
             return;
         }
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            propertyInfrastructureService.storeInfrastructureAccessibilitiesAsync(propertyId);
+            storePropertyLocationData(propertyId);
             return;
         }
 
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                propertyInfrastructureService.storeInfrastructureAccessibilitiesAsync(propertyId);
+                storePropertyLocationData(propertyId);
             }
         });
+    }
+
+    private void storePropertyLocationData(Long propertyId) {
+        propertyInfrastructureService.storeInfrastructureAccessibilitiesAsync(propertyId);
+        propertyRouteSyncService.storeMissingRoutesAsync(propertyId);
     }
 
     private BrokerPropertyData toData(Property property) {

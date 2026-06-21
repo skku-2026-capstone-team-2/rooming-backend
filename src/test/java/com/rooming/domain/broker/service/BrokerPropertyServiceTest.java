@@ -9,6 +9,7 @@ import com.rooming.domain.broker.repository.BrokerPropertyRepository;
 import com.rooming.domain.broker.repository.BrokerRepository;
 import com.rooming.domain.locations.dto.CoordinateDto;
 import com.rooming.domain.locations.service.PropertyInfrastructureService;
+import com.rooming.domain.locations.service.PropertyRouteSyncService;
 import com.rooming.domain.property.entity.Property;
 import com.rooming.domain.property.entity.TradeType;
 import org.junit.jupiter.api.Test;
@@ -31,10 +32,12 @@ class BrokerPropertyServiceTest {
     private final BrokerPropertyRepository brokerPropertyRepository = mock(BrokerPropertyRepository.class);
     private final BrokerRepository brokerRepository = mock(BrokerRepository.class);
     private final PropertyInfrastructureService propertyInfrastructureService = mock(PropertyInfrastructureService.class);
+    private final PropertyRouteSyncService propertyRouteSyncService = mock(PropertyRouteSyncService.class);
     private final BrokerPropertyService brokerPropertyService = new BrokerPropertyService(
             brokerPropertyRepository,
             brokerRepository,
-            propertyInfrastructureService
+            propertyInfrastructureService,
+            propertyRouteSyncService
     );
 
     @Test
@@ -52,7 +55,7 @@ class BrokerPropertyServiceTest {
                 .containsExactly(12L, 9L);
         assertThat(data.get(0).title()).isEqualTo("New property");
         verify(brokerPropertyRepository).findSummariesByBrokerId(7L);
-        verifyNoInteractions(brokerRepository, propertyInfrastructureService);
+        verifyNoInteractions(brokerRepository, propertyInfrastructureService, propertyRouteSyncService);
     }
 
     @Test
@@ -70,7 +73,7 @@ class BrokerPropertyServiceTest {
                 .isInstanceOf(ForbiddenException.class)
                 .hasMessage("Broker verification is required before posting a property.");
 
-        verifyNoInteractions(brokerPropertyRepository, propertyInfrastructureService);
+        verifyNoInteractions(brokerPropertyRepository, propertyInfrastructureService, propertyRouteSyncService);
     }
 
     @Test
@@ -92,6 +95,7 @@ class BrokerPropertyServiceTest {
         assertThat(data.depositAmount()).isEqualTo(500);
         assertThat(data.monthlyRent()).isZero();
         verify(propertyInfrastructureService).storeInfrastructureAccessibilitiesAsync(anyLong());
+        verify(propertyRouteSyncService).storeMissingRoutesAsync(11L);
     }
 
     private Broker verifiedBroker() {

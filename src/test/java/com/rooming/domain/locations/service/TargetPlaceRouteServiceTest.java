@@ -3,6 +3,7 @@ package com.rooming.domain.locations.service;
 import com.rooming.domain.locations.client.OdsayClient;
 import com.rooming.domain.locations.client.TmapClient;
 import com.rooming.domain.locations.dto.OdsayRouteCandidate;
+import com.rooming.domain.locations.entity.id.TargetPlacePropertyId;
 import com.rooming.domain.locations.entity.model.Route;
 import com.rooming.domain.locations.entity.model.TargetPlace;
 import com.rooming.domain.locations.entity.type.PLACE_CATEGORY;
@@ -13,6 +14,7 @@ import com.rooming.domain.locations.entity.value.RoadAddress;
 import com.rooming.domain.locations.entity.value.SubPath;
 import com.rooming.domain.locations.repository.NearbyPropertyQueryRepository;
 import com.rooming.domain.locations.repository.RouteRepository;
+import com.rooming.domain.locations.repository.TargetPlaceRepository;
 import com.rooming.domain.property.entity.Property;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 class TargetPlaceRouteServiceTest {
@@ -32,11 +35,13 @@ class TargetPlaceRouteServiceTest {
     private final OdsayClient odsayClient = mock(OdsayClient.class);
     private final NearbyPropertyQueryRepository nearbyPropertyQueryRepository =
             mock(NearbyPropertyQueryRepository.class);
+    private final TargetPlaceRepository targetPlaceRepository = mock(TargetPlaceRepository.class);
     private final RouteRepository routeRepository = mock(RouteRepository.class);
     private final TargetPlaceRouteService targetPlaceRouteService = new TargetPlaceRouteService(
             tmapClient,
             odsayClient,
             nearbyPropertyQueryRepository,
+            targetPlaceRepository,
             routeRepository
     );
 
@@ -58,15 +63,80 @@ class TargetPlaceRouteServiceTest {
         verifyNoInteractions(odsayClient);
     }
 
-    private TargetPlace targetPlace() {
-        TargetPlace targetPlace = new TargetPlace(
-                PLACE_CATEGORY.SCHOOL,
-                "Campus",
-                new RoadAddress("2066 Seobu-ro"),
-                37.2945,
+    @Test
+    void newlyStoredPropertyCreatesMissingRoutesToNearbyTargetPlaces() {
+        Property property = closeProperty();
+        TargetPlace walkingTarget = targetPlace();
+        TargetPlace publicTransportTarget = targetPlace(
+                30L,
+                "Office",
+                37.3300,
                 126.9748
         );
-        ReflectionTestUtils.setField(targetPlace, "id", 29L);
+        when(targetPlaceRepository.findWithinMeters(37.2961, 126.9718, 5_000.0))
+                .thenReturn(List.of(walkingTarget, publicTransportTarget));
+        when(routeRepository.existsById(new TargetPlacePropertyId(29L, 101L))).thenReturn(false);
+        when(routeRepository.existsById(new TargetPlacePropertyId(30L, 101L))).thenReturn(false);
+        when(tmapClient.findWalkingRoute(37.2945, 126.9748, 37.2961, 126.9718))
+                .thenReturn(Optional.of(routeCandidate(6)));
+        when(odsayClient.findFastestRoute(37.3300, 126.9748, 37.2961, 126.9718))
+                .thenReturn(Optional.of(routeCandidate(18)));
+        when(routeRepository.saveAllAndFlush(org.mockito.ArgumentMatchers.anyList()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        List<Route> routes =
+                targetPlaceRouteService.storeMissingRoutesToTargetPlacesWithinFiveKilometers(property);
+
+        assertThat(routes)
+                .extracting(Route::getTransportMode)
+                .containsExactly(TRANSPORT_MODE.WALK, TRANSPORT_MODE.PUBLIC_TRANSPORT);
+        assertThat(routes)
+                .extracting(route -> route.getId().getTargetPlaceId())
+                .containsExactly(29L, 30L);
+        verify(targetPlaceRepository).findWithinMeters(37.2961, 126.9718, 5_000.0);
+        verify(routeRepository).saveAllAndFlush(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    @Test
+    void newlyStoredPropertySkipsRoutePairsThatAlreadyExist() {
+        Property property = closeProperty();
+        TargetPlace targetPlace = targetPlace();
+        when(targetPlaceRepository.findWithinMeters(37.2961, 126.9718, 5_000.0))
+                .thenReturn(List.of(targetPlace));
+        when(routeRepository.existsById(new TargetPlacePropertyId(29L, 101L))).thenReturn(true);
+
+        List<Route> routes =
+                targetPlaceRouteService.storeMissingRoutesToTargetPlacesWithinFiveKilometers(property);
+
+        assertThat(routes).isEmpty();
+        verify(tmapClient, never()).findWalkingRoute(
+                org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble(),
+                org.mockito.ArgumentMatchers.anyDouble()
+        );
+        verifyNoInteractions(odsayClient);
+        verify(routeRepository, never()).saveAllAndFlush(org.mockito.ArgumentMatchers.anyList());
+    }
+
+    private TargetPlace targetPlace() {
+        return targetPlace(29L, "Campus", 37.2945, 126.9748);
+    }
+
+    private TargetPlace targetPlace(
+            Long id,
+            String name,
+            double latitude,
+            double longitude
+    ) {
+        TargetPlace targetPlace = new TargetPlace(
+                PLACE_CATEGORY.SCHOOL,
+                name,
+                new RoadAddress("2066 Seobu-ro"),
+                latitude,
+                longitude
+        );
+        ReflectionTestUtils.setField(targetPlace, "id", id);
         return targetPlace;
     }
 
